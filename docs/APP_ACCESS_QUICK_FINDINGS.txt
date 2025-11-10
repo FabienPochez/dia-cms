@@ -1,0 +1,79 @@
+🚨 URGENT: Field-Level Access Blocks Authenticated Hosts
+=========================================================
+
+WHAT'S BROKEN
+-------------
+14 fields in Episodes have access.read: hideFromHosts
+→ Authenticated HOST users CANNOT read these fields
+→ Unauthenticated users CAN read them (weird UX!)
+
+CRITICAL FIELDS (For Playback)
+-------------------------------
+Line 411: track_id → Blocked for hosts
+Line 343: libretimeTrackId → Blocked for hosts
+Line 414: mp3_url → Blocked for hosts
+Line 421: realDuration → Blocked for hosts
+Line 116: publishedAt → Blocked for hosts
+Line 125: duration → Blocked for hosts
+
+TEST RESULT (Unauthenticated)
+------------------------------
+$ curl /api/episodes?limit=1&depth=0
+
+Response shows these fields ARE present for unauth:
+  ✅ bitrate: 320
+  ✅ duration: 3610
+  ✅ realDuration: 3610
+  ✅ hasArchiveFile: false
+  ⚠️ track_id: null (not populated in this episode)
+  ⚠️ libretimeTrackId: null (not populated)
+  ⚠️ mp3_url: null (not populated)
+
+Note: null values likely mean fields not populated in DB,
+not filtered by access. Need to test with populated episode.
+
+ROOT CAUSE (Same as Oct 25)
+----------------------------
+• Oct 23: Used access.read: hideFromHosts for UI hiding
+• Oct 25: Discovered this BLOCKS API QUERIES (not just UI)
+• Oct 25: Fixed scheduledAt/scheduledEnd/airStatus only
+• Oct 27: Did NOT fix playback fields (still broken)
+
+hideFromHosts logic:
+  if (!user) return true        // ✅ Unauth can read
+  if (user.role === 'host') return false  // 🚨 Hosts BLOCKED
+  return true                   // ✅ Others can read
+
+THE FIX (Apply Oct 25 Pattern)
+-------------------------------
+Change 6 critical fields FROM:
+  access: { read: hideFromHosts }
+
+TO either:
+  access: { update: hideFromHosts }  // Allows reads, blocks updates
+  
+OR:
+  // Remove access property entirely (inherit public from collection)
+
+Files: Episodes.ts lines 116, 125, 343, 411, 414, 421
+
+USERS.FAVORITES
+---------------
+✅ NO ISSUES
+• users.favorites: No field-level access (readable)
+• users.favoriteShows: No field-level access (readable)
+• Collection-level scoping allows own user reads
+• Hosts CAN read/update their own favorites
+
+DECISION NEEDED
+---------------
+1. Which fields does app ACTUALLY need for playback?
+   → Verify: track_id vs libretimeTrackId vs mp3_url
+   
+2. Should hosts see publishedAt and duration in catalog?
+   → Likely YES (used in episode cards)
+   
+3. Apply minimal fix (6 fields) or broader fix (all 14)?
+   → Recommend: Start with 6 critical fields
+
+See APP_ACCESS_AUDIT_REVIEWER_PACK.md for full analysis.

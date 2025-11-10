@@ -1,0 +1,388 @@
+time="2025-10-27T16:28:36Z" level=warning msg="/srv/payload/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+🔍 Inspecting indexes for search MVP planning...
+
+✓ Connected to MongoDB
+
+
+📋 Collection: shows
+==================================================
+Found 5 indexes:
+
+1. _id_
+   Keys: {"_id":1}
+
+2. updatedAt_1
+   Keys: {"updatedAt":1}
+   Background: true
+
+3. slug_1
+   Keys: {"slug":1}
+   Unique: true
+   Background: true
+
+4. createdAt_1
+   Keys: {"createdAt":1}
+   Background: true
+
+5. title_1_subtitle_1_description_1
+   Keys: {"title":1,"subtitle":1,"description":1}
+   Background: true
+
+📊 Relevant Fields Check:
+   title: ✅ Indexed
+   subtitle: ✅ Indexed
+   description: ✅ Indexed
+
+📋 Collection: episodes
+==================================================
+Found 11 indexes:
+
+1. _id_
+   Keys: {"_id":1}
+
+2. createdAt_1
+   Keys: {"createdAt":1}
+   Background: true
+
+3. updatedAt_1
+   Keys: {"updatedAt":1}
+   Background: true
+
+4. show_1
+   Keys: {"show":1}
+   Background: true
+
+5. libretimeTrackId_1
+   Keys: {"libretimeTrackId":1}
+   Background: true
+
+6. libretimeFilepathRelative_1
+   Keys: {"libretimeFilepathRelative":1}
+   Background: true
+
+7. scheduledAt_1
+   Keys: {"scheduledAt":1}
+   Background: true
+
+8. scheduledEnd_1
+   Keys: {"scheduledEnd":1}
+   Background: true
+
+9. idx_schedStart_end
+   Keys: {"scheduledAt":1,"scheduledEnd":1}
+   Background: true
+
+10. slug_1
+   Keys: {"slug":1}
+   Unique: true
+   Sparse: true
+   Background: true
+
+11. genres_1
+   Keys: {"genres":1}
+   Background: true
+
+📊 Relevant Fields Check:
+   show: ✅ Indexed
+   genres: ✅ Indexed
+
+📋 Collection: hosts
+==================================================
+Found 5 indexes:
+
+1. _id_
+   Keys: {"_id":1}
+
+2. updatedAt_1
+   Keys: {"updatedAt":1}
+   Background: true
+
+3. createdAt_1
+   Keys: {"createdAt":1}
+   Background: true
+
+4. slug_1
+   Keys: {"slug":1}
+   Unique: true
+   Sparse: true
+   Background: true
+
+5. name_1
+   Keys: {"name":1}
+   Background: true
+
+📊 Relevant Fields Check:
+   name: ✅ Indexed
+
+
+📄 JSON Snapshot:
+==================================================
+{
+  "timestamp": "2025-10-27T16:28:36.698Z",
+  "database": "dia-cms",
+  "collections": {
+    "shows": {
+      "count": 5,
+      "indexes": [
+        {
+          "name": "_id_",
+          "keys": {
+            "_id": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": false,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "updatedAt_1",
+          "keys": {
+            "updatedAt": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "slug_1",
+          "keys": {
+            "slug": 1
+          },
+          "unique": true,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "createdAt_1",
+          "keys": {
+            "createdAt": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "title_1_subtitle_1_description_1",
+          "keys": {
+            "title": 1,
+            "subtitle": 1,
+            "description": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        }
+      ]
+    },
+    "episodes": {
+      "count": 11,
+      "indexes": [
+        {
+          "name": "_id_",
+          "keys": {
+            "_id": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": false,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "createdAt_1",
+          "keys": {
+            "createdAt": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "updatedAt_1",
+          "keys": {
+            "updatedAt": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "show_1",
+          "keys": {
+            "show": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "libretimeTrackId_1",
+          "keys": {
+            "libretimeTrackId": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "libretimeFilepathRelative_1",
+          "keys": {
+            "libretimeFilepathRelative": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "scheduledAt_1",
+          "keys": {
+            "scheduledAt": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "scheduledEnd_1",
+          "keys": {
+            "scheduledEnd": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "idx_schedStart_end",
+          "keys": {
+            "scheduledAt": 1,
+            "scheduledEnd": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "slug_1",
+          "keys": {
+            "slug": 1
+          },
+          "unique": true,
+          "sparse": true,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "genres_1",
+          "keys": {
+            "genres": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        }
+      ]
+    },
+    "hosts": {
+      "count": 5,
+      "indexes": [
+        {
+          "name": "_id_",
+          "keys": {
+            "_id": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": false,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "updatedAt_1",
+          "keys": {
+            "updatedAt": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "createdAt_1",
+          "keys": {
+            "createdAt": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "slug_1",
+          "keys": {
+            "slug": 1
+          },
+          "unique": true,
+          "sparse": true,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        },
+        {
+          "name": "name_1",
+          "keys": {
+            "name": 1
+          },
+          "unique": false,
+          "sparse": false,
+          "background": true,
+          "textIndex": false,
+          "weights": null
+        }
+      ]
+    }
+  }
+}
+
+
+📊 Summary:
+==================================================
+shows: 5 indexes
+   Text indexes: ❌ No
+episodes: 11 indexes
+   Text indexes: ❌ No
+hosts: 5 indexes
+   Text indexes: ❌ No
+
+✅ Inspection complete!
+
+✓ Connection closed

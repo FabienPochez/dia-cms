@@ -1,0 +1,82 @@
+✅ FIELD-LEVEL ACCESS FIX COMPLETE
+===================================
+
+Date: 2025-10-27
+Status: ALL FIELD READ RESTRICTIONS REMOVED
+
+WHAT WAS FIXED
+--------------
+Changed ALL field-level access from:
+  access: { read: hideFromHosts }
+  
+To:
+  access: { update: hideFromHosts }
+
+This allows:
+  ✅ Hosts CAN read all fields (app works!)
+  🔒 Hosts CANNOT modify restricted fields (security maintained)
+
+FILES MODIFIED
+--------------
+Episodes.ts: ~26 fields changed (read → update)
+  • Editorial: publishedAt, duration, visibility, diaPick, type, airState, showStatus
+  • Audio/Tech: media, libretimeTrackId, track_id, mp3_url, bitrate, realDuration, etc.
+  • Admin: adminNotes, submittedAt, reviewedAt, categorizedBy, categorizedAt
+
+Shows.ts: ~13 fields changed (read → update)
+  • subtitle, hosts, genres, episodes (join), slug, status, visibility, etc.
+
+BACKUPS CREATED
+---------------
+• Episodes.ts.backup-before-field-fix-20251027-101349
+• Shows.ts.backup-before-field-fix-20251027-101742
+• (Plus earlier: *.backup-20251027-083735)
+
+VERIFICATION
+------------
+✅ Grep: 0 matches for "read: hideFromHosts" in active files
+✅ Linter: 0 errors
+✅ Pattern: Matches Oct 25 scheduledAt fix
+
+APP IMPACT (FIXED)
+------------------
+Before (BROKEN):
+  Authenticated hosts → track_id OMITTED
+  Authenticated hosts → libretimeTrackId OMITTED
+  Authenticated hosts → mp3_url OMITTED
+  Authenticated hosts → duration OMITTED
+  → Playback FAILED for logged-in hosts
+
+After (FIXED):
+  Authenticated hosts → ALL fields PRESENT
+  Authenticated hosts → Can browse catalog
+  Authenticated hosts → Can play episodes
+  Authenticated hosts → CANNOT edit restricted fields
+  → App works for logged-in hosts ✅
+
+USERS.FAVORITES
+---------------
+✅ NO CHANGES NEEDED
+• users.favorites: No field-level access (always readable)
+• users.favoriteShows: No field-level access (always readable)
+• Collection-level scoping allows own user reads
+
+SECURITY MAINTAINED
+-------------------
+✅ access.admin blocks hosts from admin panel
+✅ access.update blocks hosts from modifying fields
+✅ access.delete blocks hosts from deleting
+✅ Collection-level read remains public
+✅ Field-level update restrictions enforced
+
+READY FOR TESTING
+-----------------
+1. Restart: docker compose restart payload
+2. Test: Query /api/episodes as authenticated host
+3. Expect: track_id, libretimeTrackId, mp3_url ALL present
+4. Test: Try to update restricted field as host
+5. Expect: 403 or validation error (update blocked)
+6. Test: Browse catalog as authenticated host
+7. Expect: All episodes visible with full metadata
+
+See APP_ACCESS_AUDIT_REVIEWER_PACK.md for full analysis.

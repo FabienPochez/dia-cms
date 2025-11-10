@@ -1,0 +1,103 @@
+STREAM HEALTH TIMELINE - Last 24 Hours
+=======================================
+
+Oct 22, 14:00-16:00 │ ████ (4 restarts)
+                    │ Unknown issues, early period
+                    │
+Oct 22, 16:00       │ █ (1 restart)
+                    │ Show transition issue
+                    │
+Oct 22, 17:00-18:00 │ ────────────────── (stable)
+                    │
+Oct 22, 19:00       │ 🎵🎵 (2 restarts) [JINGLE SPAM]
+                    │ Ceyda Yagiz show - file missing
+                    │ DIA!_radio_jingle_2.wav scheduled instead
+                    │
+Oct 22, 20:00-21:00 │ ────────────────── (stable)
+                    │
+Oct 22, 22:00       │ █ (1 restart)
+                    │ Show transition
+                    │
+Oct 23, 00:00       │ █ (1 restart)
+                    │ Antiskating → Aqua Poney transition
+                    │
+Oct 23, 01:00-05:00 │ ────────────────── (stable, 4 hours!)
+                    │
+Oct 23, 06:00-08:00 │ ████████████████████████████ (25+ restarts!) [ENCODING BUG]
+                    │ "Croisières Parallèles" show
+                    │ HTML entities vs UTF-8 mismatch
+                    │ Restart every 3 minutes for 2 hours!
+                    │ Icecast: 'Croisi&#xE8;res...'
+                    │ Expected: 'Croisières...'
+                    │
+Oct 23, 08:00       │ ⏰ (no restart) [TIMING BUG]
+                    │ Mut'ammar → Usopop transition
+                    │ 2-3 minute delay, self-recovered
+                    │ LibreTime: "waiting 3599s until next item"
+                    │
+Oct 23, 09:00       │ ⏰ (no restart) [TIMING BUG]
+                    │ Usopop → Gros Volume transition
+                    │ 3 minute delay, self-recovered
+                    │
+Oct 23, 10:00       │ ⏰ (no restart) [TIMING BUG - USER REPORTED]
+                    │ Usopop → Gros Volume transition
+                    │ 2 minute delay, self-recovered
+                    │
+Oct 23, 10:00+      │ ────────────────── (stable so far)
+
+
+LEGEND
+======
+█     = Restart event
+🎵    = Jingle spam issue
+⏰    = Hourly timing bug (self-recovered)
+──    = Stable period
+
+
+ISSUE BREAKDOWN
+===============
+
+Encoding False Positives: ~30 restarts (64%) ████████████████████████████
+Jingle Spam:              ~2 restarts  (4%)  ██
+Hourly Timing Bug:        0 restarts   (0%)  (self-recovers with 2-3 min delay)
+Other/Unknown:            ~15 restarts (32%) ████████████████
+
+
+CRITICAL PERIODS
+================
+
+🔴 06:00-08:00 (Paris time) - WORST PERIOD
+   - 25+ restarts in 2 hours
+   - Encoding bug causing restart loop
+   - Same show playing, but health check thinks it's desynced
+
+🟡 19:00 (Paris time) - JINGLE SPAM
+   - 2 restarts trying to fix jingle issue
+   - File availability problem
+   - Autoplaylist filling with jingles
+
+🟡 Every :00:00 - HOURLY DELAYS
+   - Consistent 2-3 minute delays
+   - No restarts (self-recovers)
+   - LibreTime timing bug
+
+
+KEY OBSERVATIONS
+================
+
+1. Longest stable period: 01:00-05:00 (4 hours, no issues)
+2. Worst period: 06:00-08:00 (restart every ~3 minutes)
+3. Hourly timing bug is CONSISTENT (every transition at :00:00)
+4. Jingle spam is RARE (only 1 show in 24h)
+5. Encoding bug affects shows with special characters
+
+
+NEXT HOURLY TRANSITIONS TO WATCH
+=================================
+
+11:00 - Rolling with the Punches w/ Hellion
+12:00 - Une Soirée Chez 2000 w/ Vincent 2000
+13:00 - Too Much of Nothing w/ Mikel Toyos
+14:00 - (next show TBD)
+
+Expected behavior: 2-3 minute delay at each transition

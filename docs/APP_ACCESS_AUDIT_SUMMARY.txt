@@ -1,0 +1,99 @@
+🚨 APP ACCESS AUDIT — CRITICAL FINDINGS
+========================================
+
+Date: 2025-10-27
+Status: FIELD-LEVEL ACCESS BLOCKING AUTHENTICATED HOSTS
+
+CRITICAL ISSUES FOUND
+---------------------
+🚨 episodes.track_id (line 411)
+   Current: access: { read: hideFromHosts }
+   Impact: Authenticated HOSTS cannot read this field
+   Fix: Remove access property OR change to access.update
+
+🚨 episodes.libretimeTrackId (line 343)
+   Current: access: { read: hideFromHosts }
+   Impact: Authenticated HOSTS cannot read this field  
+   Fix: Remove access property OR change to access.update
+
+🚨 episodes.mp3_url (line 414)
+   Current: access: { read: hideFromHosts }
+   Impact: Authenticated HOSTS cannot read this field
+   Fix: Remove access property OR change to access.update
+
+⚠️ episodes.publishedAt (line 116)
+   Current: access: { read: hideFromHosts }
+   Impact: Authenticated HOSTS cannot see publish dates
+   Fix: Remove or change to access.update
+
+⚠️ episodes.duration (line 125)
+   Current: access: { read: hideFromHosts }
+   Impact: Authenticated HOSTS cannot see episode duration
+   Fix: Remove or change to access.update
+
+TOTAL: ~14 fields in Audio/Tech tab blocked from authenticated hosts
+
+ROOT CAUSE
+----------
+• Oct 23: Added access.read: hideFromHosts to ~80 fields for admin UI hiding
+• Oct 25: Fixed 3 scheduling fields (changed read → update)
+• Oct 27: Did NOT fix playback fields (still have read restriction)
+• Pattern: Field-level access.read blocks API queries, not just UI
+
+hideFromHosts function (hostAccess.ts lines 129-133):
+  if (!user) return true    // ✅ Unauthenticated CAN read
+  if (user.role === 'host') return false  // 🚨 Hosts CANNOT read
+  return true               // ✅ Others CAN read
+
+APP IMPACT
+----------
+IF app queries episodes as authenticated host:
+  ❌ Cannot get track_id
+  ❌ Cannot get libretimeTrackId
+  ❌ Cannot get mp3_url
+  ❌ Cannot get duration/publishedAt
+  → Playback WILL FAIL
+
+IF app queries episodes as unauthenticated:
+  ✅ Can get all fields
+  → Playback WORKS
+
+USERS.FAVORITES STATUS
+----------------------
+✅ users.favorites (lines 209-213)
+   No field-level access restrictions
+   Readable by owner via collection-level scoping
+   
+✅ users.favoriteShows (lines 215-219)
+   No field-level access restrictions
+   Readable by owner via collection-level scoping
+
+RECOMMENDED FIX
+---------------
+Apply Oct 25 pattern to playback fields:
+
+// Change FROM:
+access: { read: hideFromHosts }
+
+// Change TO:
+access: { update: hideFromHosts }
+// Allows reads, blocks updates
+
+Fields to fix (MINIMUM):
+1. track_id (line 411)
+2. libretimeTrackId (line 343)
+3. mp3_url (line 414)
+4. realDuration (line 421)
+5. publishedAt (line 116)
+6. duration (line 125)
+
+OR remove access property entirely (inherit public from collection).
+
+VERIFICATION NEEDED
+-------------------
+1. Check app codebase: Which field does player use?
+2. Test: Query /api/episodes as authenticated host
+3. Confirm: Are playback fields present in response?
+4. Test: Can hosts play episodes in app?
+
+See docs/APP_ACCESS_AUDIT_REVIEWER_PACK.md for full details.

@@ -1,0 +1,39 @@
+✅ PAYLOAD ADMIN GATING — IMPLEMENTATION COMPLETE
+================================================
+
+Date: 2025-10-27
+Status: CHANGES APPLIED (Ready for Container Restart)
+
+WHAT WAS DONE
+-------------
+✅ Created adminPanelOnly helper (src/access/adminPanelOnly.ts)
+✅ Added access.admin to 8 collections (Episodes, Shows, Hosts, Users, Genres, Media, MediaImages, MediaTracks)
+✅ Added host validation to Users collection
+✅ Created timestamped backups of all 8 modified files
+✅ NO changes to access.read (public API unchanged)
+✅ Type-checked (no compilation errors)
+
+CHANGES SUMMARY
+---------------
+• New file: src/access/adminPanelOnly.ts (11 lines)
+• Modified: 8 collection files (+2-5 lines each)
+• Backups: 8 files with timestamp 20251027-083735
+• Total additions: ~27 lines of code
+• Total removals: 0 lines
+
+NEXT STEPS
+----------
+1. Restart Payload container: docker compose restart payload
+2. Test admin/staff access (should work)
+3. Test host user access to /admin/collections/* (should block)
+4. Test host user access to /admin/upload-episode (should work)
+5. Test frontend API queries (should work for all users)
+6. Monitor logs for 403 errors
+
+ROLLBACK
+--------
+Option A: Restore all backups from 20251027-083735
+Option B: Remove "admin: adminPanelOnly" lines from collections
+Option C: Revert individual collections if needed
+
+See docs/ROLES_PERMISSIONS_IMPLEMENTATION_REVIEWER_PACK.md for full details.

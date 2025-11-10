@@ -1,0 +1,91 @@
+✅ ALL FIXES COMPLETE — Round 3 Final
+======================================
+
+CRITICAL FIX: Removed ALL Function-Based admin.hidden
+------------------------------------------------------
+
+ROUND 1 (Initial Implementation):
+• Created adminPanelOnly.ts helper
+• Added access.admin to 8 collections
+• Added host validation to Users
+
+ROUND 2 (Fix Collection-Level hidden):
+• Removed hidden: ({ user }) => ... from 8 collection admin blocks
+• Hardened Users validation (use originalDoc)
+
+ROUND 3 (Fix Field-Level hidden):
+• Removed hidden: ({ user }) => ... from Episodes.ts fields:
+  - scheduledAt field (line 289)
+  - scheduledEnd field (line 304)
+  - airStatus field (line 325)
+
+VERIFICATION
+------------
+✅ Linter: 0 errors in all modified files
+✅ Grep: No function-based hidden in active collection files
+✅ Backups: Round 1 backups still valid (20251027-083735)
+
+BEHAVIOR CHANGES
+----------------
+Security (Enforced):
+✅ access.admin blocks hosts from admin panel
+✅ access.update blocks hosts from modifying fields
+✅ Host validation checks create AND update operations
+
+UI Visibility (Cosmetic):
+• Collections may appear in sidebar for hosts
+• Scheduling fields (scheduledAt, scheduledEnd, airStatus) visible to hosts
+• Fields are READ-ONLY for hosts (access.update enforces)
+• This is ACCEPTABLE per Oct 25 changelog (hosts need to query these fields)
+
+WHY THIS IS SAFE
+----------------
+1. access.admin = SECURITY (server-side enforcement)
+2. admin.hidden = COSMETIC (client-side UI hiding)
+3. Payload v3 can't serialize functions to client
+4. Removing admin.hidden doesn't weaken security
+
+READY FOR TESTING
+-----------------
+1. Restart: docker compose restart payload
+2. Expect: Admin panel loads (no 500 error)
+3. Expect: No "Functions cannot be passed" errors
+4. Test: Host users get 403 on /admin/collections/* (not 500)
+5. Test: /admin/upload-episode works for hosts
+6. Test: API /api/episodes returns data for all users
+
+ROLLBACK (if needed)
+--------------------
+cd /srv/payload/src/collections
+for f in Episodes Shows Hosts Users Genres Media MediaImages MediaTracks; do
+  cp "${f}.ts.backup-20251027-083735" "${f}.ts"
+done
+docker compose restart payload
+
+FILES MODIFIED (Total)
+----------------------
+Round 1: 9 files (1 new + 8 modified)
+Round 2: 8 files (removed collection hidden)
+Round 3: 1 file (removed field hidden)
+
+DOCUMENTATION
+-------------
+• FIXES_APPLIED.md - Full technical details
+• FIXES_SUMMARY.txt - Quick reference
+• IMPLEMENTATION_COMPLETE.txt - Original plan
+• ROLES_PERMISSIONS_*.md - Full audit reports
+
+Date: 2025-10-27
+Status: READY FOR CONTAINER RESTART
+
+
+
+
+
+
+
+
+
+
+
+

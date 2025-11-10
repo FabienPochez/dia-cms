@@ -1,0 +1,1940 @@
+# Backend Server Changelog
+
+This changelog documents all significant changes to the Payload CMS backend server, particularly focusing on the Planner integration with LibreTime v2 API.
+
+## Format
+
+- **Added** for new features
+- **Changed** for changes in existing functionality  
+- **Deprecated** for soon-to-be removed features
+- **Removed** for now removed features
+- **Fixed** for any bug fixes
+- **Security** for security improvements
+
+---
+
+## [Unreleased]
+
+---
+
+## [2025-11-10] - Revert Stream Watchdog Guardrails
+
+### Changed
+- **Stream watchdog** – `/srv/payload/scripts/stream-health-check.sh` restored to the 2025-11-08 deterministic grace baseline (no Liquidsoap telnet hooks or failover sequencing).
+- **Liquidsoap stack** – `/srv/libretime/patches/liquidsoap/ls_script.liq` replaced with the pre-failover programme pipeline; `docker-compose.yml` mounts/environment reverted (Icecast passwords restored, all `LS_*` guardrail toggles removed).
+- **LibreTime deployment** – Full stack restarted via `docker compose down && docker compose up -d` to pick up the rollback.
+- **Planner sync** – Ran `npx tsx scripts/manualEnvelopeSync.ts` (3-week envelope) to repopulate LibreTime after the rollback; deterministic feed rebuilt with status `ok`.
+
+### Removed
+- **Failover documentation** – `docs/STREAM_HEALTH_FAILOVER_NOTES.md` and the associated env toggles (`LS_FAILOVER_ENABLED`, `LS_RECOVER_TIMEOUT_SEC`, `FAILOVER_MIN_STAY_SEC`, `RESTART_COOLDOWN_MIN`) dropped from the stack.
+
+### Validation
+- `bash -n scripts/stream-health-check.sh`
+- Manual curl: `curl -i https://content.diaradio.live/api/schedule/deterministic`
+- Manual listen probe: `ffmpeg -t 2 -i http://127.0.0.1:8000/main -f null -`
+
+---
+
+## [2025-11-10] - LibreTime Storage Alias Restoration
+
+### Fixed
+- **Media downloads** – Restored `/srv/libretime/imported → /srv/media/imported` symlink so `/api/v2/files/{id}/download` resolves to the live media volume after the rollback. Restarted `libretime-playout-1` and `libretime-liquidsoap-1` to pick up the corrected path and confirm Icecast is back on programme audio.
+
+### Validation
+- `docker exec libretime-playout-1 curl -I -H "Authorization: Api-Key …" http://nginx:8080/api/v2/files/738/download`
+- `ffmpeg -t 5 -i http://127.0.0.1:8000/main -f null -`
+
+---
+
+## [2025-11-09] - Stream Watchdog Guardrails
+
+### Added
+- **Liquidsoap safety loop patch** – `/srv/libretime/patches/liquidsoap/ls_script.liq` now wraps the main programme with a silence-aware safety loop (`switch + fallback`) and exposes `failover.enter/exit/status` commands for the watchdog; mounted via `docker-compose.yml`.
+
+### Changed
+- **Stream watchdog** – `/srv/payload/scripts/stream-health-check.sh` now treats `bytes=0` as an immediate frozen mismatch, clamps skew allowances with deterministic-feed durations, flags >2× duration mismatches, and emits structured telemetry covering feed vs LibreTime timings.
+- **Failover orchestration** – Watchdog invokes Liquidsoap control endpoints to force the safety loop, issue soft skips, perform Liquidsoap-only restarts with a 10 min backoff, and release after a configurable minimum stay; security tightened via localhost binding in `config.yml`.
+- **Ops knobs** – New env vars `LS_FAILOVER_ENABLED`, `LS_RECOVER_TIMEOUT_SEC`, `FAILOVER_MIN_STAY_SEC`, and `RESTART_COOLDOWN_MIN` documented in `docs/STREAM_HEALTH_FAILOVER_NOTES.md`.
+
+### Validation
+- `/srv/payload/scripts/stream-health-check.sh`
+- Manual watchdog runs confirming `FAILOVER_DISABLED` telemetry when the safety loop directory is empty (no failover attempts yet on production audio).
+- `bash -n scripts/stream-health-check.sh`
+- Manual watchdog run confirming new duration logging and offline-carrier warning.
+
+---
+
+## [2025-11-08] - Deterministic Feed Grace Hardening
+
+### Added
+- **Feed resilience knobs** – `MTIME_GRACE_SEC`, `FEED_STRICT`, `FEED_FALLBACK_ON_ERROR`, `FEED_RATE_LIMIT_RPM`, `FEED_CB_THRESHOLD`, and `FEED_ERROR_ESCALATE_THRESHOLD` environment variables govern grace windows, fallback behaviour, rate limiting, and circuit breaker thresholds
+- **Validation harness** – `scripts/tests/deterministic-feed-validation.ts` simulates missing media, grace-window files, and strict mode to verify returned headers and watchdog expectations
+
+### Changed
+- **Feed builder** – `/srv/payload/src/lib/schedule/deterministicFeed.ts` now retries `fs.stat`, skips ENOENT / fresh files with partial status, tracks `missing_count`, `missing_ids`, `last_ok_version`, and emits consolidated build logs while still incrementing `scheduleVersion`
+- **Deterministic endpoint** – `/srv/payload/src/app/api/schedule/deterministic/route.ts` attaches `X-Feed-Status`/`X-Feed-Version` headers, enforces a token-bucket rate limit, and serves cached responses via a circuit breaker when Payload hiccups
+- **Rehydration pipeline** – `/srv/payload/scripts/sh/archive/rsync_pull.sh` writes to `*.tmp.$$` and atomically `mv`s into `/srv/media` to prevent half-copied files from leaking into the feed
+- **Stream watchdog** – `/srv/payload/scripts/stream-health-check.sh` consumes the new headers, logs `feed_age_sec` & `version_delta`, treats `feed_status=partial` as WARN-only, and escalates restarts only for prolonged `feed_status=error`, hard skew, or silence
+
+### Validation
+- `npx tsx scripts/tests/deterministic-feed-validation.ts`
+- `bash -n scripts/stream-health-check.sh`
+- Manual review of `/var/log/dia-cron/stream-health.log` confirming WARN-only handling for `feed_status=partial`
+
+---
+
+## [2025-11-08] - Planner Sync Envelope & Rollback
+
+### Added
+- **Envelope planner** – `src/lib/schedule/envelopeSync.ts` aggregates a three-week schedule window, enforces idempotence keys, skips missing media, shields the currently-airing hour, batches LibreTime API calls, and records audit counts.
+- **Rollback snapshots** – `src/lib/schedule/syncSnapshots.ts` captures the pre-sync playout list (24 h TTL) and exposes `/api/admin/sync/rollback?snapshotId=…` for emergency restoration.
+- **Window helper coverage** – `src/lib/schedule/syncWindow.ts` now handles Paris DST boundaries without external deps; new vitest suites (`tests/int/syncWindow.int.spec.ts`, `tests/int/syncSnapshots.int.spec.ts`) validate DST changeovers, show-span snapping, and snapshot expiry.
+
+### Changed
+- **Sync endpoints** – `src/app/api/schedule/diff-range/route.ts` and `src/app/api/schedule/apply-range/route.ts` operate in “envelope” mode with per-user/IP rate limiting, dry-run support, deterministic-feed handshakes, and one-line telemetry (`window=…, created=…, status=… snapshot=…`).
+- **Planner UI** – `src/admin/components/PlannerViewWithLibreTime.tsx` replaces “Sync This Week” with a single “Sync 3-Week Envelope” button (Alt/Option → dry-run), adds a delete-confirm modal with now±60 m safeguards, surfaces partial/missing counts, and keeps the latest snapshot ID handy for rollback.
+- **LibreTime client** – batched apply path reuses existing `planOne` logic, streams deletes via `deletePlayout`, and jitters requests to stay under API rate limits.
+
+### Validation
+- `npx vitest run tests/int/syncWindow.int.spec.ts tests/int/syncSnapshots.int.spec.ts`
+- Manual planner check: run dry-run (hold Alt/Option) to confirm toast summary, then confirm modal when deletes appear, verify `feed_status`/counts in toast and that snapshot ID is displayed.
+
+---
+
+## [2025-11-07] - Stream Watchdog Dynamic Thresholds
+
+### Changed
+- **Stream watchdog** – `/srv/payload/scripts/stream-health-check.sh` now sizes its skew tolerance per item length (10 % clamp 600–1200 s), adds restart cooldowns, and cross-checks deterministic feed progress before acting
+- **Restart policy** – Title-only mismatches are suppressed when the feed is fresh, bytes are flowing, and the same show keeps airing; hard restarts now require `hard-skew`, `bytes-stalled`, or `feed-stale`
+
+### Added
+- **Env toggles** – `LONGTRACK_SKEW_PCT`, `LONGTRACK_SKEW_MIN/MAX`, `RESTART_COOLDOWN_MIN`, `WATCHDOG_STRICT`, `RESTARTS_ENABLED`, `FEED_RECENT_WINDOW` let ops dial thresholds without code edits
+- **Structured logging** – Each poll emits a single-line summary (`state`, `reason`, `allowed_skew`, `player_skew`, `feed_age`, `feed_version`) plus explicit `SUPPRESS (stable-longtrack)` vs `RESTART (reason=...)`
+
+### Validation
+- `bash -n scripts/stream-health-check.sh`
+- Manual dry-run review of `/var/log/dia-cron/stream-health.log` to confirm suppression messaging during long-form blocks
+
+---
+
+## [2025-11-07] - Deterministic Feed & Monitoring Enhancements
+
+### Added
+- **Deterministic Schedule Feed** – New `GET /api/schedule/deterministic` endpoint backed by `/srv/payload/src/lib/schedule/deterministicFeed.ts`
+  - Produces naïve-UTC schedule with full playout metadata (fade/cue, codec, checksum, track/show info) and monotonic `scheduleVersion`
+  - Supports `lookahead` / `maxItems`, gzip, ETag/If-None-Match, and optional shared-secret token via `DETERMINISTIC_FEED_TOKEN`
+  - Updated spec in `docs/DETERMINISTIC_SCHEDULE_FEED.md`
+
+### Changed
+- **LibreTime playout** – Patched `player/fetch.py` (bind-mounted) to consume the deterministic feed with retries, delta logging, and fallback to legacy schedule; `docker-compose.yml` now passes through `PAYLOAD_API_KEY` / `DETERMINISTIC_FEED_TOKEN`
+- **Health monitor** – `scripts/stream-health-check.sh` reads the feed each run, logs version/Δ, marks `feed_stale` after configurable grace, and reuses `.env` credentials automatically
+
+### Notes
+- Restarted `payload-payload-1` and `libretime-playout-1` to activate the new endpoint and patched fetcher
+- Validation plan: monitor upcoming 1h / 2h transitions for 24–48 h; expect feed Δ ≤ 2s and no `waiting 3599/7199s` regressions while safety net stays quiet
+
+---
+
+## [2025-11-07] - LibreTime Hour Boundary Patch v2 & Monitoring Safeguards
+
+### Fixed
+- **LibreTime queue scheduling lag** – Reworked `/srv/libretime/patches/queue.py` to remove stale events before they enter the playout deque
+  - Rebuilt refresh path to sort events by UTC start time, normalise naïve timestamps, filter anything with `end <= now`, then perform an atomic swap into `schedule_deque`
+  - Added guarded purge in the play branch so any lingering past events are dropped before computing the next wait
+  - New INFO/WARN logs (`Schedule refresh: …`, `Queue post-play: …`, `Queue purge: …`) provide visibility into filtered counts, wait seconds, and UTC/CET timestamps
+  - Ensures hour & two-hour shows no longer start late because of past entries surviving across queue refreshes
+
+### Changed
+- **Health monitor auto-restarter** – Re-enabled automatic recovery with explicit reason tagging
+  - `/srv/payload/scripts/stream-health-check.sh` now restarts playout/liquidsoap when desyncs exceed threshold, logging `RESTART (safety net; reason=title-mismatch,bytes-stalled)` for rapid triage
+  - Boot run logs one-time timezone snapshot (`server_tz`, Python tzinfo, Liquidsoap tz) to help correlate future drift investigations
+
+### Added
+- **Timezone instrumentation & diagnostics**
+  - Queue refresh logs capture `now_utc`, `now_paris`, first event start, naïve-to-UTC coercions, and computed wait to validate scheduling math
+  - Health check emits a boot banner with detected timezones, ensuring the monitoring context is documented alongside operational logs
+
+### Validation
+- Verified scripts via `bash -n`, redeployed playout container, and observed new log signatures confirming instrumentation is active
+- Manual health check run confirms long-track handling and restart path function with new messaging
+
+---
+
+## [2025-11-06] - LibreTime Hour Boundary Bug Patch
+
+### Fixed
+- **LibreTime Hour Boundary Bug** - Patched queue.py to prevent "waiting 3599s" bug at hour transitions
+  - Issue: Playout calculated wrong wait times (~3600s) at hour boundaries when long tracks (>55 min) crossed hours
+  - Symptom: Stream went offline for 3-4 minutes at every hour boundary during long tracks
+  - Incidents: 34 restarts over 48 hours (Nov 4-5), all at hour boundaries with tracks >55 min
+    - Nov 4: 27 restarts (26 in single hour from 61-min track cascade)
+    - Nov 5: 7 restarts at consecutive hours (all scheduled tracks were >55 min)
+  - Root cause: Schedule updates included past events (current hour already playing) as first key, causing incorrect wait time calculation
+  - Fix: Filter out events where `event.end < now` before rebuilding schedule_deque
+  - Location: `/srv/libretime/patches/queue.py` (mounted via docker-compose volume)
+  - Implementation: 
+    - Created patched queue.py with past-event filtering logic
+    - Uses `datetime.utcnow()` for offset-naive datetime comparison (matches LibreTime)
+    - Added debug logging: "Schedule refresh: filtered N past events"
+    - Volume mount: `./patches/queue.py:/src/libretime_playout/player/queue.py:ro`
+  - Result: ✅ Patch deployed and running without errors, ✅ Awaiting validation at next hour boundaries
+
+### Changed
+- **Health Monitor** - Temporarily disabled auto-restart feature for patch validation
+  - Modified: `/srv/payload/scripts/stream-health-check.sh`
+  - Status: Log-only mode with "RESTART SUPPRESSED (test mode)" message
+  - Purpose: Clean validation of queue.py patch without health check interference
+  - Timeline: Will re-enable after 24-48 hours of successful testing
+
+### Added
+- **Documentation** - Comprehensive forensic analysis and patch documentation
+  - `/srv/payload/docs/LIBRETIME_HOUR_BOUNDARY_BUG_FORENSICS.md` - 502 lines of forensic investigation
+    - Timeline reconstruction for Nov 4-5 incidents
+    - Code path mapping in LibreTime source
+    - Log excerpts proving root cause
+    - Two patch strategies with code
+    - Monitoring commands and validation steps
+  - `/srv/libretime/patches/README.md` - Quick reference for patch deployment
+  - `.cursor/plans/fix-lib-4405a628.plan.md` - Implementation plan (Fix LibreTime Hour Boundary Bug)
+  - Evidence-based investigation using real production logs
+
+### Context
+- Affects LibreTime 3.x/4.x (known upstream issue #1275 from 2021)
+- Bug triggered by schedule refresh logic not filtering past events
+- Library has 1,617 tracks >55 min (range: 55 to 1,427 minutes)
+- Health monitor's long-track detection (implemented Nov 6) already mitigated cascade failures
+- After validation period, patch may be submitted upstream to LibreTime project
+
+---
+
+## [2025-11-05] - Password Reset Access Control Fix
+
+### Fixed
+- **Password Reset 403 Errors** - Fixed host users unable to reset passwords via email link
+  - Issue: Users clicking password reset links received 403 Forbidden errors when trying to set new password
+  - Symptom: 12 failed password reset attempts (403) vs only 1 success for affected users
+  - Root cause: `access.update` in Users collection returned `false` for unauthenticated requests
+  - Impact: Password reset flow requires unauthenticated access (user not logged in yet during reset)
+  - Fix: Changed `if (!user) return false` to `if (!user) return true` in `access.update`
+  - Location: `src/collections/Users.ts` (line 62)
+  - Security: Reset tokens provide authentication (1-hour expiry, single-use, generated by Payload)
+  - Result: ✅ Password reset emails work end-to-end, ✅ Users can successfully reset passwords
+  
+### Context
+- Payload's `resetPassword` operation runs as unauthenticated request
+- Reset token in URL provides security (short-lived, cryptographically secure)
+- Standard Payload password reset pattern requires `access.update` to allow unauthenticated access
+- Email sending was already working (SMTP configured correctly)
+- Only the final password update step was blocked by access control
+
+---
+
+## [2025-11-04] - Secure Password Change Endpoint
+
+### Added
+- **Self-Service Password Change Endpoint** - Secure API endpoint for users to change their own password
+  - New endpoint: `POST /api/users/change-password`
+  - Authentication: Requires valid JWT token in `Authorization: Bearer` header
+  - Self-service only: Users can only change their own password (no userId parameter)
+  - Current password verification via `payload.login()` server-side
+  - Request body: `{ "currentPassword": "old", "newPassword": "new" }`
+  - Response: `{ user, token, exp }` with fresh JWT token
+  - Location: `src/app/api/users/change-password/route.ts`
+
+- **Rate Limiting Utility** - In-memory rate limiter for password operations
+  - Tracks attempts by IP address + user ID combination
+  - Limit: 5 attempts per minute per user
+  - Returns 429 (Too Many Requests) when limit exceeded
+  - Automatic cleanup of expired entries every 60 seconds
+  - Methods: `check()`, `getRemainingAttempts()`, `getResetTime()`, `reset()`
+  - Location: `src/lib/rateLimiter.ts`
+  - Note: In-memory is suitable for single-instance deployment; migrate to Redis for multi-instance/serverless
+
+### Security
+- **JWT Token Rotation** - Issues fresh token after successful password change
+  - Invalidates old JWT tokens, preventing stolen token reuse
+  - New token returned in response with updated expiration
+  - Implements secure session rotation best practices
+
+- **Rate Limiting** - Prevents brute force password attacks
+  - 5 attempts per minute per IP + user ID
+  - Returns `Retry-After` header with seconds until reset
+  - Tracks failed attempts across requests
+  - Resets counter on successful password change
+
+- **Current Password Verification** - Server-side validation before update
+  - Uses standard Payload authentication (`payload.login()`) to verify
+  - Prevents unauthorized password changes from compromised sessions
+  - Returns 401 for incorrect current password
+
+- **Audit Logging** - Server-side logging of password change events
+  - Logs: `{ action, userId, userEmail, ip, timestamp, duration, success }`
+  - No sensitive data (passwords) logged
+  - Searchable via: `docker logs payload | grep password_change`
+  - Enables security monitoring and incident response
+
+- **Access Control** - Prevents horizontal privilege escalation
+  - Self-service only design (no userId parameter accepted)
+  - Uses authenticated user ID from JWT token exclusively
+  - Cannot change other users' passwords
+  - Admin password changes would require separate admin-only route
+
+- **Secure Error Handling** - Non-revealing error messages
+  - Generic messages prevent information disclosure
+  - Consistent response times (timing attack prevention)
+  - Proper HTTP status codes: 400 (validation), 401 (auth), 429 (rate limit), 500 (server)
+
+### Changed
+- No existing functionality modified (new isolated endpoint)
+
+---
+
+## [2025-11-03] - Pre-assigned Episode ID Upload Flow
+
+### Added
+- **Cover Image Upload with Compression** - Optional cover image upload in custom episode form
+  - Added cover image file picker to episode upload form
+  - Automatic image optimization using Sharp library
+  - Compression settings: Convert to JPG, 70% quality, 72 DPI
+  - Smart resize: Only resizes if width or height > 1500px (preserves aspect ratio)
+  - Original dimensions preserved if image ≤ 1500px
+  - Compression only applies to custom form uploads (when `episodeId` present)
+  - File size reduction: Typical 40-80% smaller with maintained quality
+  - Filename pattern: `{episodeId}__cover.jpg`
+  - Location: `src/admin/components/EpisodeUploadView.tsx`, `src/collections/MediaImages.ts`
+
+- **Pre-assigned Episode ID System** - Episodes created before file upload for proper filename generation
+  - New API endpoint: `POST /api/episodes/new-draft` - Creates minimal draft episodes
+  - Auth: host/staff/admin only
+  - Returns episode ID for use in upload flow
+  - Sets `createdBy` field for auditable ownership tracking
+  - Location: `src/app/api/episodes/new-draft/route.ts`
+
+- **New Episode Launcher Component** - Entry point for new episode uploads
+  - Component: `src/admin/components/NewEpisodeLauncher.tsx`
+  - "Start Upload" button creates draft and redirects to upload form
+  - Shows if no `episodeId` query parameter present
+  - Clean, user-friendly interface with error handling
+  - Integrated into upload form flow
+
+- **Canonical Filename Generation** - Episode ID prefix with sanitized original filename
+  - New utility: `src/utils/filenameFromEpisode.ts`
+  - Pattern: `{episodeId}__{sanitized-original-filename}.{ext}`
+  - Example: `67890abc123def456789abcd__gvslm-xx-w-lucien-james.mp3`
+  - Cover pattern: `{episodeId}__cover.{ext}`
+  - Preserves user's original filename intent while sanitizing special characters
+  - ASCII normalization and diacritics removal
+  - 120-character length cap with truncation
+  - Extension derived from MIME type (security, not from original filename)
+  - **Rationale**: At upload time, episode has no show/title data yet (form submitted after upload)
+  - Files can be renamed to full canonical format later using `scripts/rename-media-in-place.ts`
+
+- **Upload Filename Hooks** - Server-side filename generation with security
+  - Added custom `upload.filename` functions to MediaTracks and MediaImages
+  - **Mandatory ownership verification**: Checks user is owner, in hosts[], or staff/admin
+  - Reads `episodeId` from FormData (preferred) or query params (fallback)
+  - Generates canonical filenames using episode metadata
+  - Rejects unauthorized uploads with clear error messages
+  - Graceful fallback to timestamp-based names if episodeId missing
+  - Location: `src/collections/MediaTracks.ts`, `src/collections/MediaImages.ts`
+
+- **Draft Access Control** - Hosts can access their own drafts
+  - Enhanced Episodes collection `access.read` to include `createdBy` ownership
+  - Enhanced Episodes collection `access.update` to include draft ownership
+  - Uses `or` condition: hosts can access episodes where in `hosts[]` OR created by them
+  - Staff/admin maintain full access to all episodes
+  - Enables hosts to update drafts they created before assigning to show
+  - Location: `src/collections/Episodes.ts`
+
+### Changed
+- **Episode Upload Form** - Supports pre-assigned episode IDs
+  - Reads `episodeId` from URL query parameter (`?episodeId=...`)
+  - Shows `NewEpisodeLauncher` if no episodeId present (forces launcher flow)
+  - Appends `episodeId` to FormData during audio/cover uploads
+  - Uses `PATCH /api/episodes/{episodeId}` instead of `POST` when updating existing draft
+  - Backward compatible: still works without episodeId for legacy flows
+  - Location: `src/admin/components/EpisodeUploadView.tsx`
+
+- **Custom Navigation Links** - Upload button gated by role
+  - "Upload Episode" link now only visible to host/staff/admin users
+  - Hidden from regular users who don't have upload permissions
+  - Location: `src/admin/components/CustomNavLinks.tsx`
+
+- **Media Collections MIME Types** - Expanded audio format support
+  - MediaTracks: Added `audio/wav`, `audio/x-wav`, `audio/aiff`, `audio/x-aiff`, `audio/x-m4a`, `audio/mp4`
+  - MediaImages: Changed from `['*']` to `['image/*']` for better validation
+  - Enables uploading more audio formats (WAV, AIFF, M4A)
+
+### Security
+- **Ownership Verification (Critical)** - Prevents cross-episode filename spoofing
+  - Upload hooks verify episode ownership before accepting files
+  - Checks: `createdBy` matches OR user in `hosts[]` OR user is staff/admin
+  - Blocks unauthorized users from uploading to other users' episodes
+  - Prevents malicious filename generation attacks
+  - Location: MediaTracks and MediaImages upload hooks
+
+- **Multipart Field Preferred Over Query** - Defense in depth
+  - Reads `episodeId` from FormData first (most secure, server-controlled)
+  - Falls back to query params (less secure, browser-controllable)
+  - Both methods validated with ownership checks
+
+- **Filename Hygiene** - Prevents injection and encoding issues
+  - Extension derived from MIME type (not user-provided filename)
+  - ASCII normalization prevents encoding attacks
+  - Diacritics stripped for filesystem compatibility
+  - Length capped at 120 characters
+  - Deterministic output (no Payload auto-suffixing)
+
+### Technical Details
+
+**Upload Flow (New):**
+1. User clicks "Upload Episode" → Redirected to `/admin/upload-episode`
+2. No `episodeId` in URL → Shows `NewEpisodeLauncher`
+3. User clicks "Start Upload" → `POST /api/episodes/new-draft`
+4. Draft created with `publishedStatus: 'draft'`, `createdBy: userId`
+5. Redirected to `/admin/upload-episode?episodeId={id}`
+6. User fills form and uploads audio/cover
+7. FormData includes `episodeId` field
+8. Server generates canonical filename with episode metadata
+9. Server verifies user owns the episode (ownership check)
+10. Form submits `PATCH /api/episodes/{episodeId}` to update draft
+11. Episode now has proper filename from the start
+
+**Filename Sanitization (Upload Time):**
+- Pattern: `{episodeId}__{sanitized-original}.{ext}`
+- Original filename is slugified (lowercase, dashes, no special chars)
+- Extension replaced with MIME-derived extension (security)
+- Example: `GVSLM#xx W Lucien James.mp3` → `69088642ce2515a3d71eb648__gvslm-xx-w-lucien-james.mp3`
+
+**Full Canonical Pattern (Post-Upload Rename):**
+- Pattern: `{episodeId}__{showSlug}__{titleSlug}__{episodeNumber}.{ext}`
+- Applied by `scripts/rename-media-in-place.ts` after episode metadata is complete
+- Example: `69088642ce2515a3d71eb648__diaspora-island-vibes__special-mix__042.mp3`
+
+**Slugification Rules:**
+1. Normalize to NFD (decompose accents): `str.normalize('NFD')`
+2. Remove diacritics: `.replace(/[\u0300-\u036f]/g, '')`
+3. Convert to lowercase: `.toLowerCase()`
+4. Replace non-alphanumeric with dash: `.replace(/[^a-z0-9]+/g, '-')`
+5. Trim leading/trailing dashes: `.replace(/(^-|-$)/g, '')`
+
+**Access Control Matrix (Episodes):**
+- Admin/Staff: Full access (read/write all episodes)
+- Host: Read/write episodes where in `hosts[]` OR `createdBy` matches
+- Regular users: Read-only public access
+- Unauthenticated: Read-only public access
+
+**Dependencies Added:**
+- `mime-types@^2.1.35` - File extension mapping
+- `@types/mime-types@^2.1.4` - TypeScript definitions
+
+**Backups Created:**
+- All modified files backed up with timestamp `20251103-092338`
+- Backup directories: `src/admin/components/backups/`, `src/collections/backups/`
+- Root-level config backups: `src/payload.config.ts.backup-20251103-092338`
+
+**Files Created:**
+- `src/app/api/episodes/new-draft/route.ts` (NEW)
+- `src/admin/components/NewEpisodeLauncher.tsx` (NEW)
+- `src/utils/filenameFromEpisode.ts` (NEW)
+- `docs/PREASSIGNED_EPISODE_ID_IMPLEMENTATION.md` (NEW)
+
+**Files Modified:**
+- `src/admin/components/EpisodeUploadView.tsx` (upload flow)
+- `src/collections/MediaTracks.ts` (upload hook)
+- `src/collections/MediaImages.ts` (upload hook)
+- `src/collections/Episodes.ts` (access control)
+- `src/admin/components/CustomNavLinks.tsx` (nav gating)
+
+### Fixed
+- **Backward Compatibility** - Legacy upload flow still supported
+  - Uploads without episodeId get timestamp-based filenames
+  - Doesn't break existing scripts or direct API usage
+  - Graceful degradation on errors
+
+### Future Enhancements
+- Cleanup job for abandoned drafts (no media, older than 7 days)
+- Show selection in launcher (pre-populate show field)
+- Draft recovery UI (resume abandoned uploads)
+- Bulk upload support (multiple episodes in one session)
+
+---
+
+## [2025-10-30] - Host Relationships Refactor & Episode Upload Host Selection
+
+### Added
+- **Episode Upload Host Selection** - Allow hosts to select participants for multi-host show episodes
+  - Displays checkboxes when uploading episode for shows with 2+ hosts
+  - Pre-selects logged-in host, allows selecting any combination of show hosts
+  - Validates at least one host selected for multi-host shows
+  - Builds host lookup map from show data to display all host names
+  - Location: `src/admin/components/EpisodeUploadView.tsx`
+
+- **AfterLogin Redirect Component** - Role-based redirect after login
+  - Hosts automatically redirected to `/admin/upload-episode` after login
+  - Prevents hosts from hitting admin home page they don't have access to
+  - Fixes post-password-reset login redirect issue
+  - Location: `src/admin/components/AfterLoginRedirect.tsx`
+  - Registered in: `src/payload.config.ts` (`admin.components.afterLogin`)
+
+### Changed
+- **Host Collection Relationships** - Refactored to use join fields for bidirectional relationships
+  - Added `Hosts.shows` (join field) - Virtual field displaying all shows where host is linked
+  - Added `Hosts.episodes` (join field) - Virtual field displaying all episodes where host is featured
+  - Join fields are read-only, automatically synced from `Shows.hosts` and `Episodes.hosts`
+  - Location: `src/collections/Hosts.ts` (lines 81-111)
+
+- **Host Read Access** - Simplified to allow public read access
+  - All users can now read host profiles (names, bios are public data shown on frontend)
+  - Update/delete access still restricted to admin/staff only
+  - Fixes depth population issues when loading shows with host relationships
+  - Location: `src/access/hostAccess.ts` (`hostsReadAccess` function)
+  
+- **Episode Upload Form** - Updated to use join field data
+  - Changed from `hostData.show` (legacy) to `hostData.shows.docs` (join field)
+  - Upload form now reads from virtual relationship data
+  - Location: `src/admin/components/EpisodeUploadView.tsx` (line 122)
+
+### Removed
+- **Host.show Field** - Legacy relationship field completely removed
+  - **Breaking Change:** Direct host-to-show relationships no longer supported
+  - All relationships now managed via `Shows.hosts` (source of truth)
+  - Legacy data manually migrated (2 relationships affected)
+  - API consumers should use `host.shows` join field instead
+
+### Fixed
+- **Bidirectional Relationship Sync** - Resolved relationship consistency issues
+  - Fixed issue where adding hosts to shows didn't appear on host pages
+  - Fixed issue where hosts couldn't see their related episodes
+  - Join fields ensure automatic synchronization without manual hooks
+  - Single source of truth: Shows/Episodes own the relationship, Hosts display it
+
+### Technical Details
+- **Ownership Model:**
+  - `Shows.hosts` (relationship) → Owner/Editor ✓
+  - `Hosts.shows` (join) → Display only
+  - `Episodes.hosts` (relationship) → Owner/Editor ✓
+  - `Hosts.episodes` (join) → Display only
+  - `Episodes.show` (relationship) → Owner/Editor ✓
+  - `Shows.episodes` (join) → Display only *(existing)*
+
+- **Join Field Implementation:**
+  - Type: `join` with `on: 'hosts'` parameter
+  - Returns paginated format: `{ docs: [...] }`
+  - Admin: `readOnly: true` (prevents editing)
+  - No database storage (virtual/computed at query time)
+
+---
+
+## [2025-10-28] - Transactional Email System
+
+### Added
+- **Email Adapter Configuration** - Nodemailer SMTP integration for transactional emails
+  - Package: `@payloadcms/email-nodemailer@3.48.0` added to dependencies
+  - Configured in `src/payload.config.ts` with environment-based SMTP settings
+  - Mock mode enabled in development (logs preview URLs, no actual sends)
+  - TLS/SSL options configurable per environment
+  - Default sender: `DIA! Radio <no-reply@diaradio.live>`
+  - Provider-agnostic (works with SendGrid, Mailgun, AWS SES, Postmark, etc.)
+
+- **Auth Email Features** - Password reset and email verification enabled
+  - Forgot password flow with custom subject: "Reset your DIA! Radio password"
+  - Email verification for new user accounts (verify link sent on registration)
+  - Built-in Payload templates with customizable subjects
+  - Token expiry: 1 hour (forgot password), 7 days (verification)
+  - Location: `src/collections/Users.ts` (auth.forgotPassword, auth.verify)
+
+- **Environment Variables** - Email/SMTP configuration
+  - `EMAIL_HOST` - SMTP server hostname (required)
+  - `EMAIL_PORT` - SMTP port, typically 587 (required)
+  - `EMAIL_USER` - SMTP username/API key (required)
+  - `EMAIL_PASS` - SMTP password (required)
+  - `EMAIL_FROM` - Sender address with display name (required)
+  - `EMAIL_REPLY_TO` - Reply-to address for user responses (recommended)
+  - `EMAIL_SECURE` - Use TLS (true for port 465, false for 587) (optional, default: false)
+  - `EMAIL_TLS_REJECT_UNAUTHORIZED` - Reject invalid TLS certificates (optional, default: true)
+
+- **Documentation** - Comprehensive email setup guides
+  - `docs/EMAIL_TRANSACTIONAL_SETUP.md` - Full setup guide (500+ lines)
+    - Complete configuration reference with provider examples
+    - Production DNS setup (SPF, DKIM, DMARC) with Cloudflare instructions
+    - Email template customization guide
+    - Troubleshooting section with common issues
+    - Future features roadmap (magic links, invites, notifications)
+  - `docs/EMAIL_TRANSACTIONAL_QUICKSTART.md` - Quick reference guide
+    - 3-step setup process
+    - Environment variable reference table
+    - Popular SMTP provider configs (SendGrid, Mailgun, AWS SES, Postmark)
+    - DNS quick reference
+    - Common issues and fixes
+
+### Technical Details
+
+**Email Configuration (`src/payload.config.ts`)**:
+- Nodemailer transport with environment variables
+- Mock credentials logged in non-production (`logMockCredentials: true`)
+- Automatic error logging with provider responses
+- No emails sent on boot (only triggered by user actions)
+
+**Auth Email Triggers**:
+- Forgot password: User clicks "Forgot password?" and submits email
+- Email verification: Automatic on new user registration
+- Reset link format: `https://content.diaradio.live/admin/reset-password?token=xxxxx`
+- Verify link format: `https://content.diaradio.live/admin/verify?token=xxxxx`
+
+**Mock Mode (Development)**:
+- Enabled when `NODE_ENV !== 'production'`
+- No actual SMTP connection made
+- Preview URLs logged to console (e.g., ethereal.email links)
+- Email content visible in logs for testing
+
+**Production DNS Requirements**:
+- SPF record: Add provider include to existing Google Workspace SPF
+  - Example: `v=spf1 include:_spf.google.com include:sendgrid.net ~all`
+- DKIM records: Provider-specific CNAME records (set to DNS-only proxy)
+- DMARC record: Start with `p=none` for monitoring
+  - Example: `v=DMARC1; p=none; rua=mailto:postmaster@diaradio.live`
+- Email authentication verification: `spf=pass`, `dkim=pass`, `dmarc=pass` in headers
+
+**Supported SMTP Providers**:
+- SendGrid (100 emails/day free, recommended)
+- Mailgun (5,000 emails/month free, EU datacenter)
+- AWS SES ($0.10 per 1,000 emails)
+- Postmark (100 emails/month free, excellent deliverability)
+- Any standard SMTP server
+
+**Future Email Features** (not yet implemented):
+- Magic link login (passwordless authentication)
+- User invite system (admin-triggered invites)
+- Episode upload notifications (hook exists but disabled)
+- Newsletter integration
+- Multi-language email templates
+
+### Files Modified
+- `package.json` - Added `@payloadcms/email-nodemailer@3.48.0`
+- `src/payload.config.ts` - Configured email adapter with Nodemailer
+- `src/collections/Users.ts` - Enabled auth.forgotPassword and auth.verify
+- `docs/EMAIL_TRANSACTIONAL_SETUP.md` - Full setup guide (NEW)
+- `docs/EMAIL_TRANSACTIONAL_QUICKSTART.md` - Quick reference (NEW)
+
+### Setup Instructions
+
+**Development Testing**:
+1. Add SMTP credentials to `.env` (provider-specific)
+2. Install dependencies: `docker compose exec payload npm install`
+3. Restart container: `docker compose restart payload`
+4. Test forgot password flow in admin panel
+5. Check logs for preview URL: `docker logs payload-payload-1 --tail 50`
+
+**Production Deployment**:
+1. Configure SMTP provider (SendGrid, Mailgun, etc.)
+2. Add environment variables to production `.env`
+3. Update SPF DNS record (add provider include)
+4. Add DKIM DNS records (provider-specific)
+5. Add DMARC DNS record (start with `p=none`)
+6. Wait for DNS propagation (~30 min)
+7. Send test email and verify authentication headers
+
+### Security Notes
+- Email credentials stored in `.env` (not committed to git)
+- TLS encryption enforced by default
+- Token-based auth for reset/verify links (time-limited)
+- Provider error details logged for debugging
+- No sensitive data in email bodies (only tokens)
+
+### Configuration Notes
+- **EMAIL_FROM removed from .env**: Docker's env file parser cannot handle angle brackets `<>` correctly, even with quotes. The sender configuration is hardcoded in `src/payload.config.ts` instead.
+- **Correct Nodemailer adapter format** (Critical):
+  ```typescript
+  email: nodemailerAdapter({
+    defaultFromAddress: 'no-reply@notify.diaradio.live',  // ← Email ONLY
+    defaultFromName: 'DIA! Radio',                         // ← Name ONLY
+    // ...
+  })
+  ```
+- **Why this matters**: Payload's Nodemailer adapter automatically combines `defaultFromName` and `defaultFromAddress` into the proper RFC 5322 format: `"DIA! Radio" <no-reply@notify.diaradio.live>`. 
+- **Common mistake**: Setting `defaultFromAddress: 'Name <email@example.com>'` causes **nested brackets** when Payload formats it, resulting in "450 Invalid from field" errors from SMTP providers.
+- **Correct behavior**: Payload internally calls `sendEmail({ from: `"${defaultFromName}" <${defaultFromAddress}>` })`, so each property must contain only its respective part.
+- All other email settings remain in `.env` (host, port, credentials, etc.)
+
+### Admin Features
+- **Admin "Send Reset Email" Button** - UI component on Users edit view
+  - Location: Users collection sidebar (admin/staff only)
+  - Triggers password reset email for the selected user
+  - RESTful endpoint: `POST /api/admin/users/:id/send-reset`
+  - Access control: Server-side role check (admin/staff only, returns 403 otherwise)
+  - Client-side gate: Button only renders for admin/staff roles
+  - Uses Payload Local API to trigger `forgotPassword` flow
+  - Success feedback: Browser alert with confirmation message
+  - Logs admin action: `[send-reset] Password reset email sent to <email> by <admin-email>`
+  - **Technical Implementation**:
+    - Uses `useDocumentInfo()` hook from `@payloadcms/ui` to get current document ID
+    - Uses `useAuth()` hook for role-based rendering
+    - Registered as UI field type with `admin.components.Field` property
+    - Import path pattern: `'./admin/components/ComponentName'` (relative to src)
+    - Import map auto-generated via `npm run generate:importmap`
+  - Files:
+    - Component: `src/admin/components/SendResetButton.tsx` (NEW)
+    - Endpoint: `src/app/api/admin/users/[id]/send-reset/route.ts` (NEW)
+    - Config: `src/collections/Users.ts` (UI field added)
+  - Replaces: Manual console method / old `/api/users/send-reset-email` endpoint (removed)
+
+---
+
+## [2025-10-27] - Search Index MVP Implementation
+
+### Added
+- **Search Indexes for Mixed Search MVP** - Created 3 new indexes to support efficient search queries
+  - Inspected schemas for shows, episodes, hosts collections
+  - Audited current indexes across all three collections
+  - Found `episodes.show_1` already exists (auto-created by Payload)
+  - **Episodes Collection:** `genres_1` (multikey index for array filtering)
+    - Keys: `{ genres: 1 }`
+    - Purpose: Filter episodes by genre with efficient array lookups
+    - Query pattern: `db.episodes.find({ genres: { $in: [...] } })`
+    - Verified: ✅ Multikey index confirmed in smoke tests
+  
+  - **Shows Collection:** `title_1_subtitle_1_description_1` (compound index for text search)
+    - Keys: `{ title: 1, subtitle: 1, description: 1 }`
+    - Purpose: Enable efficient regex starts-with/contains queries on show metadata
+    - Query pattern: `db.shows.find({ title: /^search/i })`
+    - Verified: ✅ Index prefix usage confirmed
+  
+  - **Hosts Collection:** `name_1` (single-field index for name search)
+    - Keys: `{ name: 1 }`
+    - Purpose: Fast host name searches
+    - Query pattern: `db.hosts.find({ name: /^search/i })`
+    - Verified: ✅ IXSCAN confirmed in tests
+
+  - **Note:** `episodes.show_1` already existed (auto-created by Payload), so only 3 new indexes needed
+
+### Changed
+- **Index Counts (Before → After):**
+  - Shows: 4 → 5 indexes (+1)
+  - Episodes: 10 → 11 indexes (+1)
+  - Hosts: 4 → 5 indexes (+1)
+  - **Total: 18 → 21 indexes (+3)**
+  - Text indexes: 0 (deferred to Phase 2)
+
+### Technical Details
+
+**Index Creation:**
+- All indexes created with `background: true` (non-blocking builds)
+- Zero errors during creation
+- Creation time: < 1 second (small dataset)
+- Write throughput: No measurable impact
+
+**Smoke Test Results (100% Pass Rate):**
+1. ✅ Episode join by show - Using `show_1` index (0ms)
+2. ✅ Episode genre filter - Using `genres_1` multikey index (1ms)
+3. ✅ Show title search - Using `title_1_subtitle_1_description_1` compound index (0ms)
+4. ✅ Host name search - Using `name_1` index (0ms)
+
+**Query Performance:**
+- All queries using IXSCAN stage (not COLLSCAN)
+- Execution times: 0-1ms for typical searches
+- Multikey index correctly detected for genres array field
+- Compound index prefix optimization working as expected
+
+**Scripts Created:**
+- `scripts/db/inspect-search-indexes.js` - Audit existing indexes
+- `scripts/db/create-search-indexes-mvp.js` - Create missing indexes (with --dry-run support)
+- `scripts/db/smoke-test-search-indexes.js` - Validate index usage with explain()
+
+**Documentation:**
+- Full planning: `docs/SEARCH_INDEX_PLAN_MVP.md` (20K, 12 sections)
+- Executive summary: `docs/SEARCH_INDEX_PLAN_SUMMARY.md` (5K)
+- Navigation guide: `docs/SEARCH_INDEX_PLAN_README.md` (7.5K)
+- Baseline snapshot: `docs/SEARCH_INDEX_BASELINE.txt` (7K)
+- Post-creation snapshot: `docs/SEARCH_INDEX_AFTER_MVP.txt` (7K)
+- Completion summary: `docs/SEARCH_INDEX_PLANNING_COMPLETE.txt` (10K)
+
+**Query Patterns Supported:**
+- ✅ Episodes by show reference (join speed)
+- ✅ Episodes by genre array (multikey filtering)
+- ✅ Shows by title/subtitle/description (starts-with regex)
+- ✅ Hosts by name (starts-with regex)
+
+**Known Limitations (Acceptable for MVP):**
+- Regex leading wildcard queries (`/.*search/i`) won't use indexes efficiently
+- No relevance scoring (deferred to Phase 2 text indexes with `$text` operator)
+- Compound index won't optimize subtitle-only or description-only queries (only leftmost field `title` gets prefix optimization)
+
+**Phase 2 Preview:**
+- Full-text search with `$text` operator and `$meta: "textScore"`
+- Language-specific stemming (English)
+- Better wildcard/contains query performance
+- Relevance ranking for search results
+
+**Rationale:**
+- Support mixed search MVP with minimal indexes
+- Simple ascending indexes sufficient for starts-with regex queries
+- Text indexes add complexity (language analyzers, scoring) - defer until needed
+- Baseline documented before changes for rollback reference
+
+---
+
+## [2025-10-27] - Admin Panel Gating & Field-Level Access Fix
+
+### Added
+- **Host Upload Funnel** - Streamlined upload workflow for host users
+  - Created `/admin/upload-success` page - Success screen with congrats message and CTAs
+  - Success page features: Episode title display, "Upload Another Episode" button, "Log Out" button
+  - Auto-redirect: Hosts visiting `/` (homepage) are automatically redirected to `/admin/upload-episode`
+  - Auto-redirect: Hosts visiting `/admin` (dashboard) are automatically redirected to `/admin/upload-episode`
+  - Simplified flow: Login → Upload → Success → Upload Another or Logout
+  - Components: `src/admin/components/UploadSuccessView.tsx`, `src/admin/components/HostDashboardRedirect.tsx`
+  - Modified: `src/admin/components/EpisodeUploadView.tsx` (line 278-280, redirects to success page instead of episode detail)
+  - Modified: `src/app/(frontend)/page.tsx` (lines 17-20, auto-redirect hosts to upload)
+  - Registered in: `src/payload.config.ts` (lines 52-56 for success view, line 59 for dashboard redirect)
+  - Backups: `EpisodeUploadView.tsx.backup-20251027-101855`, `page.tsx.backup-20251027-101908`, `payload.config.ts.backup-20251027-101855`
+
+### Fixed
+- **Field-Level Access Blocking App Reads** - Removed read restrictions that prevented authenticated hosts from accessing playback fields
+  - Issue: ~26 fields in Episodes and ~13 fields in Shows had `access: { read: hideFromHosts }` which blocked authenticated host users from reading them
+  - Impact: Authenticated hosts couldn't access `track_id`, `libretimeTrackId`, `mp3_url`, `duration`, `publishedAt`, and other app-critical fields
+  - Symptom: Episodes playback worked for unauthenticated users but failed for logged-in hosts (fields omitted from API response)
+  - Root cause: Same pattern as Oct 25 scheduledAt fix - field-level `access.read` blocks API queries, not just UI visibility
+  - Fix: Changed all field-level `access: { read: hideFromHosts }` to `access: { update: hideFromHosts }` in Episodes and Shows collections
+  - Result: ✅ Hosts can now read all fields via API (app works), 🔒 Hosts cannot modify restricted fields (security maintained)
+  - Location: `src/collections/Episodes.ts` (~26 fields), `src/collections/Shows.ts` (~13 fields)
+  - Fields fixed: track_id, libretimeTrackId, mp3_url, duration, publishedAt, visibility, bitrate, realDuration, subtitle, hosts array, genres, slug, status, and many others
+  - Backups: `Episodes.ts.backup-before-field-fix-20251027-101349`, `Shows.ts.backup-before-field-fix-20251027-101742`
+  - Documentation: `docs/APP_ACCESS_AUDIT_REVIEWER_PACK.md` (full field-level audit), `docs/APP_ACCESS_QUICK_FINDINGS.txt` (quick reference)
+
+### Security
+- **Separated Admin Panel Access from Public API Access** - Implemented `access.admin` to gate admin panel without restricting public API
+  - Created `src/access/adminPanelOnly.ts` - Reusable helper function for admin/staff-only panel access
+  - Added `access.admin: adminPanelOnly` to 8 collections: Episodes, Shows, Hosts, Users, Genres, Media, MediaImages, MediaTracks
+  - Result: Host users blocked from admin panel routes (403), public API remains accessible for all users
+  - Location: All collection files + new helper
+  - Documentation: `docs/ROLES_PERMISSIONS_AUDIT_REVIEWER_PACK.md` (full audit), `docs/ROLES_PERMISSIONS_IMPLEMENTATION_REVIEWER_PACK.md` (implementation details)
+
+- **Hardened Host User Validation** - Improved data integrity for host role assignments
+  - Added validation in Users collection to require linked host profile when `role === 'host'`
+  - Uses `originalDoc` from hook args to check effective role/host values on updates
+  - Prevents: Creating host users without profiles, updating users to host role without profile, removing host link from existing hosts
+  - Location: `src/collections/Users.ts` (lines 67-77)
+
+### Fixed
+- **Payload v3 Function Serialization Error** - Removed function-based `admin.hidden` that caused admin panel 500 errors
+  - Issue: `Error: Functions cannot be passed directly to Client Components` (Payload v3 serializes config to client)
+  - Collection-level: Removed `hidden: ({ user }) => user?.role === 'host'` from 8 collections
+  - Field-level: Removed `hidden` functions from Episodes scheduling fields (scheduledAt, scheduledEnd, airStatus)
+  - Impact: Collections/fields may appear in sidebar for hosts, but `access.admin` and `access.update` enforce security
+  - Result: ✅ Admin panel loads without errors, ✅ Security still enforced server-side
+  - Location: All collection `admin` blocks and Episodes scheduling fields
+  - Context: Oct 25 changelog noted these fields need to be queryable for frontend app, visual hiding is cosmetic only
+
+### Changed
+- **Access Control Pattern** - Shifted from UI hiding to server-side enforcement
+  - Before: Used `admin.hidden` functions for visual hiding (broken in Payload v3)
+  - After: Use `access.admin` for panel gating, `access.update` for field restrictions
+  - Security enforcement remains unchanged (all server-side via `access.*` properties)
+  - UI behavior: Some collections/fields visible to hosts but interactions blocked (403)
+
+### Documentation
+- **Security Audit & Implementation**
+  - Created comprehensive audit documentation suite:
+    - `docs/ROLES_PERMISSIONS_AUDIT_INDEX.md` - Navigation guide and quick start
+    - `docs/ROLES_PERMISSIONS_AUDIT_SUMMARY.md` - Executive summary (5-min read)
+    - `docs/ROLES_PERMISSIONS_AUDIT_REVIEWER_PACK.md` - Full technical audit (30-min read, 711 lines)
+    - `docs/ROLES_PERMISSIONS_PROPOSED_DIFFS.md` - Proposed changes with verification steps
+    - `docs/ROLES_PERMISSIONS_IMPLEMENTATION_REVIEWER_PACK.md` - Implementation details (527 lines)
+    - `docs/FIXES_APPLIED.md` - Critical fixes documentation (215 lines)
+    - `docs/FIXES_SUMMARY.txt` - Quick reference
+    - `docs/FINAL_FIX_COMPLETE.txt` - Final status and rollback instructions
+    - `docs/IMPLEMENTATION_COMPLETE.txt` - Original implementation summary
+  - Audit scope: All collections, field-level access, JWT config, frontend API usage, security risks
+  - Key findings: Payload's `access.read` applies to ALL API requests (admin + REST + GraphQL), no native separation of admin vs public API access
+  - Solution: Use `access.admin` for admin panel gating (new), keep `access.read` for API access control (unchanged)
+
+### Technical Details
+
+**Access Control Matrix (After Changes):**
+
+| Role | Admin Panel Collections | Custom Views | Public API | Write Operations |
+|------|------------------------|--------------|------------|------------------|
+| admin/staff | ✅ Full access | ✅ All views | ✅ All | ✅ All |
+| host | ❌ Blocked (403) | ✅ Upload/Planner | ✅ All | ✅ Own episodes/shows only |
+| user | ❌ Blocked | ❌ Blocked | ✅ All | ❌ None |
+| unauthenticated | ❌ Blocked | ❌ Blocked | ✅ All (except Users) | ❌ None |
+
+**Field-Level Access (Episodes - Host Users):**
+- ✅ Can edit: title, description, tracklist, cover, hosts, energy, mood, tone, genres
+- 🔒 Read-only: show, roundedDuration, publishedStatus, scheduledAt, scheduledEnd, airStatus
+- ❌ Hidden: media, libretimeTrackId, bitrate, duration, adminNotes, all admin-only fields
+
+**Enforcement:**
+- `access.admin` - Admin panel access (server-side, blocks routes)
+- `access.read/create/update/delete` - API access control (server-side, all requests)
+- `access.update` on fields - Field modification control (server-side)
+- `admin.hidden` - UI visibility (client-side, removed due to Payload v3 serialization)
+
+**Backups Created:**
+- All 8 collection files backed up with timestamp: `*.ts.backup-20251027-083735`
+- Can rollback by restoring from these backups
+
+**Files Modified:**
+- NEW: `src/access/adminPanelOnly.ts` (11 lines)
+- MODIFIED: 8 collections (Episodes, Shows, Hosts, Users, Genres, Media, MediaImages, MediaTracks)
+- Total additions: ~40 lines of code
+- Total removals: ~11 lines (function-based hidden)
+
+**Related Issues:**
+- Addresses Oct 23 Host Access Control coupling issue (admin panel gating broke frontend API)
+- Resolves Oct 25 emergency fixes (login failure, query errors, frontend breakage)
+- Aligns with Payload v3 best practices (no function serialization to client)
+
+**Verification Steps:**
+1. Admin/staff can access `/admin/collections/episodes` ✅
+2. Host users get 403 on `/admin/collections/episodes` ✅
+3. Host users CAN access `/admin/upload-episode` ✅
+4. Public API `/api/episodes` returns data for all users ✅
+5. Host validation triggers on create AND update ✅
+
+**Rollback Instructions:**
+```bash
+cd /srv/payload/src/collections
+for f in Episodes Shows Hosts Users Genres Media MediaImages MediaTracks; do
+  cp "${f}.ts.backup-20251027-083735" "${f}.ts"
+done
+rm /srv/payload/src/access/adminPanelOnly.ts
+docker compose restart payload
+```
+
+---
+
+## [2025-10-25] - Login Fix for Users Collection
+
+### Fixed
+- **Users Collection Read Access** - Fixed login failure caused by overly restrictive access control
+  - Issue: Users couldn't log in (403 Forbidden on `/api/users?where[email][equals]=...`)
+  - Root cause: `access.read` returned `false` for unauthenticated users, blocking Payload's auth flow
+  - Chicken-and-egg problem: Auth system needs to read user record to authenticate, but access required already being authenticated
+  - Fix: Changed `if (!user) return false` to `if (!user) return true` (line 24)
+  - Pattern matches Episodes/Shows collections (unauthenticated access for frontend + auth flow)
+  - Location: `src/collections/Users.ts`
+  - Impact: ✅ Login restored for admin panel and app, ✅ Admin restrictions maintained (hosts still scoped to themselves when authenticated)
+  - Related to: Host Access Control changes from 2025-10-23
+
+- **Episodes Scheduling Fields Query Error** - Fixed host users unable to query scheduledAt field
+  - Issue: QueryError when frontend app queried episodes by `scheduledAt` with host-authenticated user
+  - Error: "The following paths cannot be queried: scheduledAt, scheduledAt"
+  - Root cause: Field-level `access.read: hideFromHosts` blocked API queries, not just UI visibility
+  - Design conflict: Admin panel should hide fields from hosts, but frontend app needs to query them
+  - Fix: Changed scheduling fields (`scheduledAt`, `scheduledEnd`, `airStatus`) from:
+    - Before: `access: { read: hideFromHosts }` (blocked queries)
+    - After: `access: { update: hideFromHosts }` + `admin.hidden: ({ user }) => user?.role === 'host'` (blocks updates, hides UI, allows queries)
+  - Location: `src/collections/Episodes.ts` lines 277-327
+  - Impact: ✅ Frontend app can query program schedule for all users, ✅ Admin UI still hides fields from hosts, ✅ Hosts can't modify scheduling data
+  - Related to: Host Access Control changes from 2025-10-23
+
+- **Host Access Control Breaks Frontend App** - Reverted to public API access for Episodes and Shows
+  - Issue: Host and regular users logged into frontend app could only see scoped data (or nothing)
+    - Hosts: Could only see episodes/shows where they're linked (can't favorite others, browse catalog)
+    - Regular users (role='user'): Couldn't see ANY episodes/shows (returned false)
+  - Root cause: Payload's `access.read` applies to ALL API requests (no distinction between admin panel vs frontend app)
+  - Original Oct 23 intent: Restrict admin panel UI, not the API itself
+  - Design flaw: `episodesHostAccess` and `showsHostAccess` scoped data by user role at API level
+  - Fix: Reverted Episodes and Shows collections to public API access:
+    - `access.read: () => true` (public API for frontend app)
+    - `admin.hidden: ({ user }) => user?.role === 'host'` (hide collections from hosts in admin sidebar)
+    - Kept field-level `access.update` restrictions (hosts can't modify admin-only fields)
+  - Location: `src/collections/Episodes.ts` (lines 20-54), `src/collections/Shows.ts` (lines 9-37)
+  - Impact: ✅ Frontend app restored for all users (can browse all episodes/shows), ✅ Admin panel still hides collections from hosts, ✅ Upload form still works (custom view), ✅ API write permissions maintained
+  - Related to: Host Access Control changes from 2025-10-23
+
+---
+
+## [2025-10-23] - Uploads Subdomain (DNS-Only)
+
+### Added
+- **Dedicated Uploads Subdomain** - Bypass Cloudflare for large file uploads
+  - New subdomain: `upload.content.diaradio.live` (DNS-only, no proxy)
+  - Nginx vhost: `/etc/nginx/sites-available/upload.content.diaradio.live`
+  - Upload limit: 1GB (vs 100MB Cloudflare limit)
+  - Timeouts: 300s for large file handling
+  - Restricted routes: Only allows POST to `/api/media*` endpoints
+  - All other paths return 404 (defense-in-depth)
+  - Separate logging: `/var/log/nginx/upload.access.log`
+
+### Changed
+- **Upload View Routes to Uploads Subdomain**
+  - Media uploads now use `upload.content.diaradio.live`
+  - Main API stays on `content.diaradio.live` (Cloudflare protected)
+  - Environment variable: `NEXT_PUBLIC_UPLOADS_HOST`
+  - Location: `src/admin/components/EpisodeUploadView.tsx` line 154-155
+
+- **Environment Variables Added**
+  - `UPLOADS_HOST=https://upload.content.diaradio.live`
+  - `UPLOADS_MAX_SIZE=1g`
+  - `NEXT_PUBLIC_UPLOADS_HOST=https://upload.content.diaradio.live`
+  - Added to `.env` file
+
+### Architecture
+
+**Main Domain (Cloudflare Proxied):**
+- `content.diaradio.live` → CDN/WAF/DDoS protection
+- All API endpoints except media uploads
+- Static assets, JSON files
+
+**Uploads Domain (DNS-Only):**
+- `upload.content.diaradio.live` → Direct to origin
+- POST to `/api/media-tracks`, `/api/media-images`, `/api/media` only
+- 1GB upload limit, 300s timeouts
+- All other paths: 404
+
+### Setup Requirements
+
+**DNS (Fabien to configure):**
+```
+Type: A
+Name: upload.content
+Content: 46.62.141.69
+Proxy: DNS only (grey cloud) ⚠️
+```
+
+**SSL Certificate:**
+```bash
+sudo certbot --nginx -d content.diaradio.live -d upload.content.diaradio.live
+```
+
+### Fixed
+- **CORS Preflight Blocked on Upload Subdomain**
+  - Issue: `limit_except POST` was blocking OPTIONS requests (CORS preflight)
+  - Browser couldn't complete CORS handshake before upload
+  - Fixed: Changed `limit_except POST` to `limit_except POST OPTIONS`
+  - Moved OPTIONS handling before limit_except directive
+  - Location: `/etc/nginx/sites-available/upload.content.diaradio.live` line 20-32
+
+### Documentation
+- Setup guide: `/srv/payload/docs/UPLOADS_SUBDOMAIN_SETUP.md`
+- Includes testing, troubleshooting, rollback procedures
+
+---
+
+## [2025-10-23] - Host Access Control & Permissions
+
+### Added
+- **Host-Specific Access Control** - Strict data scoping for host users
+  - New access utilities: `src/access/hostAccess.ts`
+  - Functions: `showsHostAccess`, `episodesHostAccess`, `hostCanCreate`, `adminAndStaff`, `readOnlyForHosts`
+  - Implements role-based filtering and permissions
+
+### Changed
+- **Shows Collection Access** - Hosts only see their own shows
+  - Read: Hosts filtered to shows where they are in `hosts` array
+  - Create: Hosts can create shows (for upload form compatibility)
+  - Update/Delete: Admin and staff only
+  - Location: `src/collections/Shows.ts`
+  - Backup: `src/collections/Shows.ts.backup-access`
+
+- **Episodes Collection Access** - Hosts only see their own episodes
+  - Read: Hosts filtered to episodes where they are in `hosts` array
+  - Create: Hosts can create episodes (via upload form)
+  - Update: Hosts can update their own episodes, admin/staff can update all
+  - Delete: Admin and staff only
+  - Location: `src/collections/Episodes.ts`
+  - Backup: `src/collections/Episodes.ts.backup-access`
+
+- **Hidden Collections for Hosts** - Removed from navigation sidebar
+  - Hosts collection: Hidden, admin/staff only
+  - Genres collection: Hidden from nav, read-only for hosts (needed for upload form)
+  - Media, MediaImages, MediaTracks: Hidden from navigation
+  - Collections: `Hosts.ts`, `Genres.ts`, `Media.ts`, `MediaImages.ts`, `MediaTracks.ts`
+
+- **Field-Level Access Control for Hosts** - ✅ Working correctly (fixed implementation)
+  - **Correct Method**: Add `access: { read, update }` property directly on each field definition
+  - **Previous Mistake**: Was using collection-level `access.fields` which doesn't affect UI rendering
+  - **Admin UI respects this**: Hidden fields don't render, read-only fields are disabled
+  - Enforced at both API and UI level
+  - **Key insight**: Collection-level `update` access must allow hosts to update their records, then field-level `access` controls which fields they can read/modify
+  
+  **Episodes - Host View:**
+  - ✅ **Can Edit**: title, description, tracklistRaw, cover, hosts, energy, mood, tone, genres
+  - 🔒 **Read-only**: show, roundedDuration, publishedStatus, pendingReview, episodeNumber, slug
+  - ✅ **Can View (read-only)**: Metrics tab (plays, likes, airCount, etc.)
+  - ❌ **Hidden (no read)**: publishedAt, duration, visibility, diaPick, type, airState, showStatus, all Scheduling fields, all Audio/Tech fields, all Admin fields
+  
+  **Shows - Host View:**
+  - ✅ **Can Edit**: title, description, cover
+  - ❌ **Hidden (no read)**: subtitle, hosts array, genres, Relations collapsible, slug, status, visibility, homepageFeatured, airState, launchedAt, show_type, libretimeShowId, libretimeInstanceId
+  - **Fix applied**: Changed collection-level `update: adminAndStaff` to query-scoped access allowing hosts to update shows where they're linked
+  
+  - Location: `src/access/hostAccess.ts` (hideFromHosts, readOnlyFieldForHosts functions)
+  - Applied in: `src/collections/Episodes.ts` (field.access on ~80 fields), `src/collections/Shows.ts` (field.access + collection update query)
+
+### Access Control Summary
+
+| Collection | Host Read | Host Create | Host Update | Host Delete | Admin View |
+|------------|-----------|-------------|-------------|-------------|------------|
+| Episodes   | Own only  | ✅ Yes      | Own only    | ❌ No       | Hidden     |
+| Shows      | Own only  | ✅ Yes      | Own only    | ❌ No       | Hidden     |
+| Hosts      | Own only (API) | ❌ No  | ❌ No       | ❌ No       | Hidden     |
+| Genres     | ✅ Yes    | ❌ No       | ❌ No       | ❌ No       | Hidden     |
+| Media*     | ✅ Yes    | ✅ Yes      | ✅ Yes      | ✅ Yes      | Hidden     |
+| Users      | Own only  | ❌ No       | Own only    | ❌ No       | Hidden     |
+
+*Media collections (media, media-images, media-tracks) maintain public access but hidden from nav
+
+---
+
+## [2025-10-23] - Host Episode Upload System
+
+### Added
+- **Episode Upload Page for Hosts** - `/upload-episode` custom view
+  - New custom admin view accessible at `/admin/upload-episode`
+  - Gated to users with role `host`, `staff`, or `admin`
+  - Hosts can upload pre-recorded episodes with full metadata
+  - Complete metadata form: show, title, description, tracklist
+  - **Classification fields**: Energy (low/medium/high), Mood (9 options), Tone (6 options)
+  - **Genres**: Multi-select dropdown (hold Ctrl/Cmd for multiple)
+  - **Audio requirements modal**: Blue "?" button shows technical specs and duration rules
+  - **Classification guide modal**: Green "?" buttons show mood/tone/energy definitions with examples
+  - Both modals provide comprehensive guidance for hosts
+  - Duration presets: 60, 120, 180, 240, 300, 360 minutes
+  - Real-time progress bar with upload percentage
+  - Location: `src/admin/components/EpisodeUploadView.tsx`
+  - Registered in: `src/payload.config.ts`
+
+- **Host-User Linking** - Associate hosts with user accounts
+  - Added `user` relationship field to Hosts collection
+  - Enables strict access control: users can only upload for their linked host
+  - Required for upload permissions
+  - Location: `src/collections/Hosts.ts`
+  - Backup created: `src/collections/Hosts.ts.backup`
+
+- **Episode Tracklist Field** - Plain textarea for track listings
+  - Added `tracklistRaw` field to Episodes collection
+  - Plain textarea (no rich text) for easy paste from Rekordbox/notes
+  - Location: `src/collections/Episodes.ts` line 68-76
+  - Future: Will auto-parse into structured `tracklistParsed[]`
+
+- **Pending Review System** - Workflow for episode approval
+  - Added `pendingReview` boolean flag to Episodes collection
+  - Added `submitted` status to `publishedStatus` enum
+  - Episodes start as `draft`, become `submitted` on upload
+  - Admin/staff review before publishing
+  - Location: `src/collections/Episodes.ts` line 133-142
+
+- **Audio File Validation** - Strict ffprobe-based validation
+  - New utility: `src/utils/audioValidation.ts`
+  - Validates on Episode creation/update when media changes
+  - Enforces requirements:
+    - Bitrate: exactly 320 kbps
+    - Sample rate: exactly 44100 Hz
+    - Duration: must match selected duration ±1 second
+    - Duration: must be multiple of 60 seconds
+    - Duration: max 360 minutes (21600 seconds)
+  - Uses ffprobe from `@ffmpeg-installer/ffmpeg` package
+  - Rejects episodes that fail validation with clear error messages
+  - Location: `src/collections/Episodes.ts` lines 400-447 (hook)
+
+- **Email Notifications** - Alert admin of new uploads
+  - New utility: `src/utils/emailNotifications.ts`
+  - Sends email when episode status becomes `submitted`
+  - Recipients: all users with role `admin`
+  - Email includes: host name, show title, episode title, direct link
+  - Hook runs after episode creation/update
+  - Location: `src/collections/Episodes.ts` lines 624-666 (afterChange hook)
+  - Note: Requires email configuration in `payload.config.ts` (see docs)
+
+### Changed
+- **Episodes Collection Schema Updates**
+  - Added `tracklistRaw` textarea field (Editorial tab)
+  - Added `pendingReview` checkbox (sidebar)
+  - Added `submitted` option to `publishedStatus` select
+  - Backup created: `src/collections/Episodes.ts.backup`
+
+- **Hosts Collection Schema Updates**
+  - Added `user` relationship field (sidebar)
+  - Links hosts to user accounts for upload permissions
+  - Backup created: `src/collections/Hosts.ts.backup`
+
+- **Users Collection Schema Updates**
+  - Added `host` relationship field (sidebar)
+  - Creates bidirectional link between users and host profiles
+  - Enables staff to assign host profiles to user accounts
+  - Backup created: `src/collections/Users.ts.backup`
+
+### Technical Details
+
+**Upload Flow:**
+1. Host logs in → auto-identified via user→host relationship
+2. Selects show from their linked shows
+3. Fills metadata: title, description, tracklist, published date
+4. Selects duration: 60, 120, 180, 240, 300, or 360 minutes
+5. Uploads audio file
+6. Backend validates file with ffprobe
+7. Episode created with status `submitted`, `pendingReview: true`
+8. Email sent to all admin users
+
+**Access Control:**
+- Upload view checks `req.user.role ∈ ['host', 'staff', 'admin']`
+- User must have associated host record
+- Show dropdown filtered by host's linked shows
+- Strict ACL prevents hosts from accessing other hosts' content
+
+**Validation Hook:**
+- Runs in `beforeChange` hook on Episodes collection
+- Triggers when `media` field is set/changed and `roundedDuration` is present
+- Extracts metadata using ffprobe
+- Auto-populates `realDuration`, `duration`, `bitrate` fields
+- Throws error on validation failure (prevents save)
+
+**Email Notification Hook:**
+- Runs in `afterChange` hook on Episodes collection
+- Triggers when `publishedStatus === 'submitted'` AND `pendingReview === true`
+- Fetches show/host names for email context
+- Sends to all admin users (no failure cascade if email fails)
+- Gracefully handles missing email configuration
+
+**Dependencies:**
+- System ffmpeg/ffprobe installed via `apk add ffmpeg` in container startup
+- Email requires Payload email adapter (not configured yet - see docs)
+
+### Fixed
+- **FFmpeg Module Import Error** - Fixed "Module not found" error in Next.js
+  - Removed `@ffmpeg-installer/ffmpeg` npm package dependency
+  - Now uses system ffmpeg/ffprobe installed directly in container
+  - Updated `docker-compose.yml` to install ffmpeg via `apk add --no-cache ffmpeg`
+  - Updated `src/utils/audioValidation.ts` to use system `ffprobe` command
+  - Changed from static import to dynamic import in Episodes collection hook
+  - Location: `src/collections/Episodes.ts` line 420-422 (dynamic import in hook)
+  - Validation utilities now load only when hook executes (server-side runtime)
+
+- **Upload Failed with 413 Error** - Fixed nginx upload size limit
+  - Issue: Default nginx `client_max_body_size` is 1MB
+  - 140MB audio files were rejected with "413 Payload Too Large"
+  - Added `client_max_body_size 500M;` to nginx server block
+  - Location: `/etc/nginx/sites-available/content.diaradio.live`
+  - Backup created: `/etc/nginx/sites-available/content.diaradio.live.backup`
+  - Reloaded nginx with `systemctl reload nginx`
+  - Now supports uploads up to 500MB (covers all episode lengths)
+
+- **Duration Validation Too Restrictive** - Updated to match exact planner rules
+  - 60min slot requires ≥59min actual duration
+  - 90min slot requires ≥89min actual duration  
+  - 120min slot requires ≥119min actual duration
+  - 180min slot requires ≥179min actual duration
+  - >180min slots: no quality check applied (no upper or lower limit)
+  - No upper limit enforced for any slot (allows longer tracks)
+  - Location: `src/utils/audioValidation.ts` line 88-102
+  - Matches existing planner scheduling logic
+
+### Improved
+- **Upload Progress Indicator** - Visual feedback during file upload
+  - Added real-time progress bar showing upload percentage
+  - Uses XMLHttpRequest for progress tracking
+  - Shows upload phase: "Uploading... X%", "Validating...", "Creating episode..."
+  - Progress bar with smooth animation
+  - Location: `src/admin/components/EpisodeUploadView.tsx`
+
+- **Custom Navigation Links** - Upload and Planner accessible from sidebar
+  - Added via `admin.components.beforeNavLinks` (appears above collections)
+  - Custom component: `src/admin/components/CustomNavLinks.tsx`
+  - 📤 Upload Episode → `/admin/upload-episode` (visible to all authenticated users)
+  - 📅 Planner → `/admin/planner` (hidden from hosts, visible to admin/staff only)
+  - Uses `useAuth()` hook to conditionally render based on user role
+  - **Login redirect**: Direct links to `/admin/upload-episode` redirect to login with return URL (fixed null user check)
+  - Location: `src/payload.config.ts` line 50-52, `src/admin/components/CustomNavLinks.tsx`, `src/admin/components/EpisodeUploadView.tsx` (line 85-89)
+
+- **Custom Branding** - DIA Radio logo and branding
+  - **Admin Panel Logo**: Custom logo component replaces Payload logo
+    - Logo file: `/public/Logo-Dia-New.png`
+    - Size: 100px height (auto width)
+    - Appears on login page and admin sidebar
+    - Component: `src/admin/components/Logo.tsx`
+    - Config: `src/payload.config.ts` (admin.components.graphics.Logo)
+  
+  - **Frontend Homepage Customization**: 
+    - Replaced Payload logo with DIA Radio logo (500px max width, responsive)
+    - Changed title: "Welcome to DIA! Radio CMS" (dynamic for logged-in users)
+    - Replaced "Documentation" button with "Upload Episode" button
+    - Footer commented out (reserved for future use)
+    - File: `src/app/(frontend)/page.tsx`
+
+- **Upload Size Limits Increased** - Support for large audio file uploads (500MB)
+  - **Nginx Global**: Set `client_max_body_size 500M;` in `/etc/nginx/nginx.conf`
+  - **Nginx Server**: Set `client_max_body_size 500M;` in `/etc/nginx/sites-available/content.diaradio.live`
+  - **Next.js**: Added `serverActions.bodySizeLimit: '500mb'` (experimental)
+  - Allows uploading full-length episodes (60-180 min at 320kbps = ~140-420MB)
+  - Restarted nginx with `systemctl restart nginx`
+  - Location: `next.config.mjs` line 16-20
+  - ⚠️ **Cloudflare Bypass Required**: Set DNS to "DNS only" (gray cloud) to avoid 100MB limit
+  - Alternative: Add Cloudflare Page Rule to bypass `/api/media-tracks*` endpoint
+
+---
+
+## [2025-10-23] - Autoplaylist Reference Fix
+
+### Fixed
+- **Removed Non-Existent Autoplaylist Reference** - Fixed show creation failures
+  - Issue: `ensureShow()` was trying to set `auto_playlist: 1` but playlist ID 1 doesn't exist
+  - Error: `{"auto_playlist":["Invalid pk \"1\" - object does not exist."]}`
+  - Symptom: Shows couldn't be synced from Payload to LibreTime (e.g., "Summer Equinoxe" at 21:00)
+  - Fix: Removed `auto_playlist: 1` field from show creation data
+  - Location: `src/integrations/libretimeClient.ts` line 684
+  - Impact: New shows can now be created successfully
+  - Note: Autoplaylist remains disabled (`auto_playlist_enabled: false`) as intended
+
+---
+
+## [2025-10-23] - Smooth Transitions with Fades
+
+### Changed
+- **Added 1-Second Fades to All Transitions** - Professional cross-fades between shows and jingles
+  
+**Show-to-Show Transitions (LibreTime):**
+- Changed `fade_in` from `00:00:00` → `00:00:01` in `ensurePlayout()`
+- Changed `fade_out` from `00:00:00` → `00:00:01` in `ensurePlayout()`
+- Location: `src/integrations/libretimeClient.ts` lines 876-877
+- Effect: Smooth 1-second cross-fades between scheduled shows
+- Applies to: All new shows synced from Payload after this change
+
+**Jingle Fallback Fades (Liquidsoap):**
+- Added `fade.in(duration=1.)` to jingle source
+- Added `fade.out(duration=1.)` to jingle source  
+- Location: `/src/libretime_playout/liquidsoap/1.4/ls_script.liq` lines 152-153
+- Effect: Smooth fade in/out when jingles play during gaps
+- Tested: Successfully deployed and verified in logs
+
+**Benefits:**
+- ✅ Professional transitions - no hard cuts
+- ✅ Masks audio edges between schedule and jingles
+- ✅ Listener-friendly failover
+- ✅ Subtle (1 second) - not noticeable but effective
+
+**Backups:**
+- Pre-fades version: `/srv/payload/backups/liquidsoap_2025-10-23_08-43-57/ls_script.liq.before_fades`
+- With fades version: `/srv/payload/backups/liquidsoap_2025-10-23_08-43-57/ls_script.liq.fades_v2`
+
+---
+
+## [2025-10-23] - Liquidsoap Jingle Safety Net
+
+### Added
+- **Liquidsoap Jingle Safety Net** - Emergency fallback to prevent dead air
+  - Purpose: Play jingles automatically when LibreTime schedule fails or goes silent
+  - Implementation: Modified Liquidsoap script to add fallback chain before silence
+  - Location: `/src/libretime_playout/liquidsoap/1.4/ls_script.liq` (lines 148-160)
+  - Jingle files: `/srv/media/jingles/` (DIA!_radio_jingle_1.mp3, DIA!_radio_jingle_2.mp3)
+  - Behavior: `schedule → jingle fallback → silence` (3-tier safety)
+  
+**Technical Details:**
+- Created jingle source from `/srv/media/jingles/DIA!_radio_jingle_1.mp3`
+- Wrapped `stream_queue` with fallback: `schedule_or_jingles = fallback([stream_queue, jingles])`
+- Non-invasive modification: Only replaced `stream_queue` reference in main switch
+- Preserves priority: Live DJ → Show DJ → Schedule → **Jingles** → Silence
+  
+**Catches These Issues:**
+- Hourly timing bug (LibreTime waits instead of playing)
+- Missing files (when file not in working directory)
+- Schedule gaps (no show programmed)
+- Analyzer errors (file processing failures)
+  
+**Safety Measures:**
+- Full backup created: `/srv/payload/backups/liquidsoap_2025-10-23_08-43-57/ls_script.liq.backup`
+- Modified version saved: `/srv/payload/backups/liquidsoap_2025-10-23_08-43-57/ls_script.liq.modified`
+- Tested with `docker logs` - jingle file loaded successfully
+- Liquidsoap restarted without errors
+
+**Future Improvements:**
+- Consider using `playlist()` mode for multiple jingles rotation
+- Add `on_blank` detection for faster switching (Liquidsoap 1.4 compatibility research needed)
+- Monitor effectiveness during next hourly transition
+
+### Context
+- Implements Chad's minimal non-invasive approach
+- Complements stream health check fixes from earlier today
+- Works alongside disabled autoplaylist (prevents jingle spam in LibreTime)
+- Pure Liquidsoap solution - independent of LibreTime scheduling bugs
+
+---
+
+## [2025-10-23] - Stream Health & Desync Mitigation
+
+### Fixed
+- **Character Encoding False Positives in Health Check** - Eliminated 60-70% of false restart triggers
+  - Issue: HTML entities (`&#xE8;`) from Icecast vs UTF-8 (`è`) from database caused title mismatch
+  - Symptom: 25+ restarts during 2-hour "Croisières Parallèles" show (Oct 23, 06:00-08:00)
+  - Fix: Added `normalize_title()` function to decode HTML entities before comparison
+  - Method: Python's `html.unescape()` to handle all entity formats
+  - Location: `scripts/stream-health-check.sh`
+  - Impact: Reduced false positive rate from 64% to near 0%
+
+### Changed
+- **Reduced Desync Threshold** - Faster recovery from hourly timing bug
+  - Changed: `RESTART_THRESHOLD` from 120s to 60s
+  - Rationale: LibreTime has timing detection bug at hourly boundaries (every :00:00)
+  - LibreTime log evidence: "waiting 3599s until next item" (waiting 1 hour instead of playing current show)
+  - Before: 2-3 minute delays at every hourly show transition
+  - After: ~1 minute delays (auto-restart kicks in faster)
+  - Location: `scripts/stream-health-check.sh`
+  - Note: Only safe after fixing encoding issue (otherwise would double false restart rate)
+
+- **Disabled LibreTime Autoplaylist** - Temporary mitigation for jingle spam
+  - Changed: `auto_playlist_enabled: false` in show creation
+  - Previous: `auto_playlist_enabled: true` with playlist ID 1 ("Filler - Outro")
+  - Rationale: Prevents jingle loops when episode files missing from working directory
+  - Oct 22 incident: "Ceyda Yagiz" show scheduled but file missing → 400+ jingles scheduled instead
+  - Alternative: Let Liquidsoap handle gaps (silence or offline.mp3) instead of jingles
+  - Location: `src/integrations/libretimeClient.ts` - `ensureShow()` method
+  - Status: Temporary until file rehydration verified reliable
+  - Note: Can re-enable once Cron A confirmed to physically copy files before schedule time
+
+### Documentation
+- **Stream Health Investigation Pack** - Comprehensive analysis of 24h monitoring data
+  - Created 4-document reviewer pack with 47 restart events analyzed
+  - Documents:
+    - `STREAM_HEALTH_INDEX.md` - Navigation guide and quick start
+    - `STREAM_HEALTH_SUMMARY.md` - Executive summary with key findings
+    - `STREAM_HEALTH_ISSUES_REPORT.md` - Full 18KB technical analysis with evidence
+    - `STREAM_HEALTH_TIMELINE.txt` - Visual 24-hour timeline
+  - Issues identified:
+    1. Jingle spam (4% of restarts) - File availability issue
+    2. Hourly timing bug (every :00:00 transition) - LibreTime playout bug, self-recovers with 2-3min delay
+    3. Character encoding (64% of restarts) - HTML entities vs UTF-8 mismatch
+  - Location: `/srv/payload/docs/STREAM_HEALTH_*.md`
+  - Purpose: Investigation pack for upstream LibreTime bug reporting
+
+### Context
+- **Analysis Period:** Oct 22-23, 2025 (24 hours of stream health monitoring)
+- **Total Restarts:** 47 (before fixes)
+- **Expected After Fixes:** <5 restarts/day (90% reduction)
+- **Worst Period:** 06:00-08:00 (25+ restarts due to encoding issue)
+- **Best Period:** 01:00-05:00 (4 hours stable, no issues)
+- **Remaining Issue:** LibreTime timing bug at hourly boundaries (upstream fix needed)
+
+---
+
+## [2025-10-22] - Planner Sync & Autoplaylist Fixes
+
+### Fixed
+- **Autoplaylist Field Names Bug** - Fixed LibreTime show creation failure
+  - Issue: Used incorrect field names (`has_autoplaylist`, `autoplaylist_id`) instead of LibreTime API format
+  - LibreTime API requires: `auto_playlist`, `auto_playlist_enabled`, `auto_playlist_repeat`
+  - Error prevented new show creation during sync: `{"auto_playlist_enabled":["This field is required."]}`
+  - Fix: Updated field names in `ensureShow()` to match LibreTime API specification
+  - Location: `src/integrations/libretimeClient.ts`
+
+- **Sync Batch Limit Exceeded** - Increased operation limit for large syncs
+  - Issue: Batch limit of 200 operations too low when autoplaylist generates many jingles
+  - Symptom: Sync fails with 400 error when trying to clean up 200+ jingle entries
+  - Fix: Increased `MAX_OPERATIONS` from 200 to 500 in apply-range endpoint
+  - Location: `src/app/api/schedule/apply-range/route.ts`
+  - Note: Jingle cleanup via API is slow; direct SQL cleanup recommended for 100+ entries
+
+### Added
+- **Pre-Sync Rehydration** - Experimental file preparation before scheduling
+  - Attempts to rehydrate episode files before creating LibreTime schedule entries
+  - Goal: Prevent autoplaylist from filling slots with jingles due to missing files
+  - Current status: Incomplete - `rehydrateEpisode()` returns "already hydrated" without verifying file existence
+  - Location: `src/app/api/schedule/apply-range/route.ts`
+  - Note: Cron A (every 15min) remains primary rehydration mechanism
+
+- **Environment Configuration for dev-scripts** - Added .env file loading
+  - Added `env_file: - .env` to dev-scripts service in docker-compose.yml
+  - Ensures `LIBRETIME_API_KEY` and other environment variables available to cron jobs
+  - Fixes potential API authentication issues in automated scripts
+
+### Context
+- **Autoplaylist Behavior**: LibreTime automatically fills gaps in show instances ~1 hour before airtime
+  - Only triggers when files are missing (`file_exists=false`) or tracks shorter than slot duration
+  - Uses "Filler – Outro" playlist (ID 1) with jingle smartblock
+  - Example: 57:57 track in 60min slot → ~2min of jingles at end
+  - Jingles appear gradually as show approaches airtime, not immediately at sync
+
+---
+
+## [2025-10-22] - Stream Stability & Health Monitoring
+
+### Added
+- **Stream Health Check** - Automated monitoring and recovery for LibreTime playout desync
+  - Script: `/srv/payload/scripts/stream-health-check.sh`
+  - Runs every 60 seconds via cron
+  - Compares Icecast stream title vs LibreTime schedule
+  - Detects frozen stream (bytes not increasing)
+  - Auto-restarts playout after 120s sustained desync
+  - Logs to `/var/log/dia-cron/stream-health.log`
+  - Uses state tracking in `/tmp/stream-health-state.json`
+  - Prevents false positives with sustained mismatch threshold
+  - Fixed apostrophe handling in show titles (e.g., "Voila l'Topo")
+  
+- **Stream Health Documentation** - Comprehensive analysis and monitoring guide
+  - Document: `/srv/payload/docs/STREAM_HEALTH_MONITORING.md`
+  - Root cause analysis of LibreTime timing bug
+  - Configuration audit results
+  - Testing and verification procedures
+  - Monitoring commands and troubleshooting
+
+- **Planner Episode Quality Filters** - Duration-based filtering for schedule quality
+  - Increased fetch limit from 500 to 2000 episodes (covers all catalog + growth room)
+  - Slot size filter: Only allow 30, 60, 90, 120, or 180+ minute episodes
+  - Duration quality filter: Actual duration must be ≥ (slot - 1) minute
+    - 30min slot requires ≥29min actual duration
+    - 60min slot requires ≥59min actual duration  
+    - 90min slot requires ≥89min actual duration
+    - 120min slot requires ≥119min actual duration
+    - 180min slot requires ≥179min actual duration
+    - >180min slots: no quality check applied
+  - Uses `realDuration` field (seconds) from Payload
+  - Console logging of excluded episodes for debugging
+  - Prevents scheduling short episodes that would cause dead air
+  - Location: `src/admin/hooks/useUnscheduledEpisodes.ts`
+
+- **Autoplaylist Support for All Shows** - Automatic filler content
+  - Shows now created with `has_autoplaylist: true` and `autoplaylist_id: 1`
+  - All 40 existing shows updated to use "Filler – Outro" playlist
+  - Playlist contains smartblock with jingles to fill short gaps
+  - Prevents dead air when episodes are slightly shorter than time slot
+  - Example: 59:17 episode in 60min slot → 43s filled with jingles
+  - Location: `src/integrations/libretimeClient.ts` - `ensureShow()` method
+
+### Fixed
+- **LibreTime Playout Timing Bug Mitigation** - Addresses hourly boundary desync
+  - Issue: Playout fails to detect current show at hourly transitions
+  - Symptom: Stream goes silent despite LibreTime UI showing "ON AIR"
+  - Root cause: Schedule window detection bug in playout service
+  - Evidence: Logs show playout waiting for next hour instead of playing current show
+  - Solution: Health check detects stuck state and triggers automatic restart
+  - Recovery time: Within 2 minutes of desync detection
+  - Confirmed pattern: Occurs at every hourly boundary (:00 minutes)
+
+### Changed
+- **Crontab Configuration** - Added stream health monitoring
+  - New entry: `* * * * * stream-health-check.sh` (every minute)
+  - Uses `flock` to prevent overlapping runs
+  - Complements existing pre-air, post-air, and file-exists checks
+
+- **Planner Episode Fetch Limit** - Increased from 500 to 2000
+  - Ensures all episodes in catalog are available for scheduling
+  - Fixes issue where shows beyond position 500 were not searchable
+
+---
+
+## [2025-10-22] - Planner Stability & Streaming Fixes
+
+### Fixed
+- **Event Palette Drag Bug** - Fixed drag-and-drop functionality breaking after a few drags
+  - Issue: Cleanup function running on every re-render, destroying Draggable instance
+  - Fix: Separated cleanup into mount-only effect with empty dependency array
+  - Location: `src/admin/components/EventPalette.tsx`
+  - Episodes remain draggable consistently across filter changes and refetches
+
+- **Stream Early Cutoff Bug** - Fixed shows cutting off after 15 minutes
+  - Issue: `cue_out` hardcoded to `00:15:00` instead of full track length
+  - Fix: Fetch actual file length from LibreTime API and use as `cue_out` value
+  - Location: `src/integrations/libretimeClient.ts` - `ensurePlayout()` method
+  - All future schedule entries now use correct track duration
+  - Applied retroactive fix to 24 existing schedule entries via SQL update
+
+- **Double Stream Bug** - Fixed simultaneous playback causing audio overlap
+  - Root cause: Missing files marked as `file_exists = true` triggered schedule reloads
+  - Playout downloaded missing files → 404 errors → skipped tracks → schedule reload → current track restarted
+  - Fixed by marking missing files as `file_exists = false` and removing from schedule
+
+### Added
+- **File Exists Checker** - Automated validation of LibreTime file existence
+  - Script: `/srv/payload/scripts/fix-libretime-file-exists.sh`
+  - Checks all files marked as existing in database against actual disk presence
+  - Updates `file_exists = false` for missing files
+  - Removes missing files from future schedules to prevent playback errors
+  - Daily cron job at 3:00 AM to prevent issues from backup restores or file deletions
+  - Log output: `/var/log/dia-cron/file-exists-check.log`
+
+### Changed
+- **Crontab Configuration** - Added daily file existence check
+  - New entry: `0 3 * * * fix-libretime-file-exists.sh`
+  - Uses `flock` to prevent overlapping runs
+  - Complements existing pre-air and post-air cron jobs
+
+---
+
+## [2025-10-21] - Database Indexing Optimization
+
+### Added
+- **Database Indexes for Scheduled Queries** - Optimized MongoDB indexes for episode scheduling
+  - Single-field indexes on `scheduledAt` and `scheduledEnd` fields
+  - Compound index `idx_schedStart_end` on `(scheduledAt, scheduledEnd)`
+  - Enables efficient queries for NOW (`scheduledAt <= now < scheduledEnd`) and UPCOMING (`scheduledAt >= now`)
+  - Manually created via `scripts/db/sync-indexes-direct.ts` (direct MongoDB connection)
+  - Verification script: `scripts/db/check-indexes.ts` (via Payload)
+  - Package.json script: `pnpm run check:indexes`
+  - Backend-only change, no UI impact
+
+---
+
+## [2025-10-17] - Planner UI Enhancements
+
+### Added
+- **Episode Palette Tabs** - Organized episode management with ARCHIVE/NEW/LIVE tabs
+  - Tab persistence via `planner.palette.tab` localStorage key
+  - Namespaced filter state per tab (`planner.filters.v1.archive/new/live`)
+  - Keyboard shortcuts: Ctrl/Cmd+1/2/3 for tab switching
+  - ARCHIVE tab: Full existing functionality (filters + episodes + drag & drop)
+  - NEW/LIVE tabs: Placeholder panels for future features
+  - Legacy filter migration: `planner.filters.v1` → `planner.filters.v1.archive`
+
+- **Time-Aware Plan Status** - Smart episode card styling based on schedule timing
+  - "Recent" status (last 30 days): Green card background + green badge "Planned • X ago"
+  - "Future" status (after now): Neutral card + blue badge "Scheduled • in X"
+  - "Old" status (>30 days ago): Neutral card + grey badge "Planned • X ago"
+  - Configurable threshold via `PLANNED_RECENT_DAYS` constant (default: 30)
+  - New `planStatus.ts` utility with type-safe status detection
+
+- **Episode Palette Filters V1.1** - Enhanced client-side filtering system for episode discovery
+  - Search filter (title/show, debounced 300ms)
+  - Mood button multi-select (sedative, cozy, groovy, club, adrenaline, hard, psychedelic, leftfield, research) - no Ctrl+click required
+  - Tone button multi-select (dark, bright, melancholic, dreamy, nostalgic, neutral) - no Ctrl+click required
+  - Energy toggle buttons (low, medium, high)
+  - Duration preset buttons (Short, ≈60, ≈90, ≈120, ≈180, Long) with ±5 min tolerance ranges
+  - Play Count range filter (min-max)
+  - Collapsible filter UI with localStorage persistence (`planner.filters.v1`)
+  - "Clear All" button to reset filters
+  - Filter state migration (strips old genre field from localStorage)
+
+- **Enhanced Episode Cards** - Improved visual design in 2-column grid layout
+  - Lazy-loaded cover images (60px height)
+  - Show title display under episode title
+  - Last Aired date with relative time (e.g., "🕒 2025-06-21 • 23 days ago")
+  - Play count with pluralization ("▶ 12 plays" or "▶ 1 play")
+  - Energy/mood/tone metadata badges (color-coded)
+  - Improved empty state messaging based on active filters
+  
+- **Relative Time Formatting** - Enhanced utility for human-readable dates
+  - `formatRelativeTime()` displays past dates: "23 days ago", "6 weeks ago", etc.
+  - Future date support: "in 5 days", "in 2 hours", etc.
+  - `formatDate()` formats ISO dates to YYYY-MM-DD
+  - English-only for V1
+
+- **Planner Event Bus** - Real-time sync between calendar and episode palette
+  - Lightweight EventTarget-based pub/sub system
+  - 3 event types: `SCHEDULED`, `RESCHEDULED`, `UNSCHEDULED`
+  - Optional BroadcastChannel support for cross-tab sync (disabled by default)
+  - Debounced reconciliation (3s) after scheduling events
+  - Window focus listener for automatic data refresh
+  - Optional visibility-aware polling (60s safety net, commented out)
+  - No backend changes, purely client-side coordination
+
+- **Calendar Event Visual Metadata** - Energy colors and mood/tone badges
+  - Energy-based color coding: Low (green), Medium (yellow), High (red)
+  - Mood/tone badges appended via `eventDidMount` (up to 2 moods + 1 tone)
+  - WCAG AA compliant colors (4.5:1+ contrast ratios)
+  - Works across all calendar views (timeGrid, dayGrid, list)
+  - Tooltips on badges show full text
+  - Graceful degradation when metadata missing
+
+### Changed
+- **Episode Card Styling** - Time-aware background colors
+  - Only "recent" planned episodes (last 30 days) get green background
+  - Future/old/unplanned episodes use neutral white background
+  - Cleaner visual hierarchy focuses attention on recently scheduled content
+  
+- **Episode Palette Layout** - Switched from single-column to responsive 2-column grid
+  - Grid template: `repeat(auto-fill, minmax(180px, 1fr))`
+  - Maintains drag-and-drop functionality with improved visual density
+  - Card padding reduced from 12px to 10px for better fit
+  
+- **Filter UI/UX Improvements** - Better interaction patterns
+  - Mood/Tone switched from native `<select multiple>` to toggle buttons (no Ctrl+click needed)
+  - Duration filter replaced numeric inputs with 6 preset buttons
+  - All filter types now use buttons for consistency (except Search and Play Count)
+  - Last Aired filter removed from controls (now display-only on cards)
+  
+- **Filter State Migration** - Auto-upgrade old localStorage data
+  - Maps old `durationMin/Max` to nearest preset (Short, ≈60, ≈90, ≈120, ≈180, Long)
+  - Strips deprecated `lastAiredStart/End` fields
+  - Preserves other filter settings during migration
+  
+- **Episode Data Fetching** - Expanded metadata and performance improvements
+  - Unscheduled episodes: Increased limit to 500, depth 2, AbortController for cancellation
+  - Scheduled episodes: Enhanced depth to 2 for metadata (energy, mood, tone)
+  - Removed server-side search query (moved to client-side filtering)
+  - Added metadata fields: mood, tone, energy, airCount, lastAiredAt, cover, genres
+  - Metadata propagated to calendar events via extendedProps
+
+- **Draggable Lifecycle Management** - Improved stability during filtering
+  - Episode ID hash tracking to prevent unnecessary re-initialization
+  - Proper destroy/recreate cycle when filtered episode list changes
+  - Maintains `.fc-episode` class and data attributes for calendar integration
+
+- **Calendar → Palette Sync** - Automated data synchronization
+  - Calendar events emit to plannerBus on schedule/reschedule/unschedule
+  - Episode palette subscribes and triggers debounced refetch (3s delay)
+  - Stable callback refs prevent subscription churn (fixed unmount/remount bug)
+  - Window focus automatically refreshes palette data
+  - Event deduplication prevents refetch storms
+  - Proper cleanup on unmount (no memory leaks)
+
+- **Calendar Event Styling** - Dynamic visual feedback via FullCalendar hooks
+  - `eventClassNames` adds energy-based CSS classes (energy-low/medium/high/none)
+  - `eventDidMount` appends mood/tone badges to event DOM
+  - Works alongside existing `eventContent` delete button renderer
+  - No impact on drag/drop/resize interactions
+
+- **Filter Performance Optimizations**
+  - `useDeferredValue` for smooth typing experience (no UI jank)
+  - `useMemo` to prevent unnecessary filter recalculation
+  - Debounced search input (300ms) via custom `useDebounce` hook
+  - Telemetry logging: `console.info('planner.filters.apply', { count, total })`
+
+### Fixed
+- **Planner Sync Subscription Bug** - Fixed palette refetch not executing after calendar events
+  - Root cause: `scheduleRefetch` callback had dependency on `refetch`, causing subscription to re-run and clear pending timeouts
+  - Solution: Stable callback with empty dependencies + ref indirection for latest `refetch` function
+  - Impact: Palette now correctly updates within 3 seconds after schedule/move/delete actions
+
+### Technical Debt
+- **No True Optimistic Updates (V1 Limitation)** - Palette updates after 3s refetch
+  - `useUnscheduledEpisodes` doesn't expose state setter for immediate updates
+  - User sees status change 3 seconds after scheduling (calendar shows immediate feedback)
+  - V2: Add local state mutation before refetch for instant visual feedback
+  
+- **BroadcastChannel Disabled by Default** - Cross-tab sync not active in V1
+  - Single-tab workflow relies on window focus refetch
+  - V2: Enable BroadcastChannel with `new PlannerBus(true)` for instant cross-tab updates
+  - Safari <15.4 lacks support but degrades gracefully
+  
+- **Duration Preset Gaps** - Presets don't cover all ranges
+  - Gaps at 65-85 min and 95-115 min won't match any preset
+  - Consider adding "≈75 min" and "≈105 min" presets in V2 if needed
+  
+- **Genre Filter Deferred** - Genre filtering excluded from V1, planned for V2
+  - Genre data fetched but not displayed/filtered in current implementation
+  
+- **500 Episode Limit** - May need pagination or virtualization for larger datasets
+  - Consider implementing in V2 if performance degrades
+
+---
+
+## [2025-10-14] - Step 4D: Manual Sync Feature
+
+### Added
+- **Planner "Sync This Week" Feature** - Complete implementation of batch sync functionality ✅ **PRODUCTION READY**
+  - `POST /api/schedule/diff-range` - Calculates differences between Payload and LibreTime schedules
+  - `POST /api/schedule/apply-range` - Executes batch scheduling operations
+  - Bidirectional sync support (add/remove episodes)
+  - Conflict detection and resolution
+  - Optimistic locking with server hash validation
+  - Batch operation limits (200 operations per request)
+  - **Successfully tested: All empty instances cleaned up, sync working perfectly**
+
+- **LibreTime Instance Update System** - Added instance reuse for moved episodes
+  - `updateInstance()` method in LibreTimeClient for modifying existing instances
+  - `ensureInstance()` now accepts `currentInstanceId` parameter for instance reuse
+  - Prevents duplicate instances when moving episodes to different time slots
+
+- **Force Delete Instance Capability** - Bypass LibreTime's internal empty checks
+  - `forceDeleteInstance()` method for aggressive cleanup
+  - Used when `diff-range` has already determined instance should be deleted
+  - Handles LibreTime API eventual consistency issues
+
+- **Authoritative Instance Check** - New `listSchedulesByInstance()` method
+  - Queries `/schedule?instance={id}` endpoint directly (not cached)
+  - Returns accurate schedule count from cc_schedule table
+  - Used for reliable post-deletion instance emptiness verification
+  - Enables single-sync deletes in 95%+ of cases
+
+### Changed
+- **Enhanced LibreTime Instance Management** - Improved `ensureInstance()` logic
+  - Better conflict detection for overlapping time slots
+  - Expanded search window (±1 hour) to catch nearby instances
+  - Smarter duplicate instance handling
+  - More detailed logging for debugging
+  - Instance reuse for moved episodes instead of creating duplicates
+
+- **Instance Cleanup Logic** - Refined empty instance detection with authoritative source
+  - ✅ **Single-Sync Delete** - Uses `/schedule` endpoint for accurate instance emptiness checks
+  - Retry logic with exponential backoff (400ms, 800ms, 1200ms) handles API delays
+  - Only delete instances with 0 schedules (authoritative count from database)
+  - Graceful degradation: defers to second sync if API consistently returns stale data
+
+### Fixed
+- **Instance Reuse Bug** - Fixed issue where episodes were scheduled in wrong instances
+  - Episodes no longer get scheduled in mismatched time windows
+  - Proper instance creation for each unique time slot
+  - Cleanup of orphaned instances and playouts
+
+- **Infinite Loop Bug** - Fixed aggressive instance cleanup causing sync loops
+  - Reverted to safer "0 total playouts" logic instead of "0 valid playouts"
+  - Prevents system from deleting instances that still contain content
+  - Maintains data integrity while allowing proper cleanup
+
+- **Date Format Mismatch** - Fixed ISO date comparison issues
+  - Normalized LibreTime dates (Z format) to match Payload dates (.000Z format)
+  - Resolved false positives in episode-to-playout matching
+  - Fixed "Time slot conflicts" errors due to date string differences
+
+- **LibreTime API Response Handling** - Fixed DELETE operation responses
+  - Handle 204 No Content responses properly
+  - Prevent "SyntaxError: Unexpected end of JSON input" errors
+  - Improved error handling for LibreTime API consistency issues
+
+---
+
+## [2025-10-14] - Step 4D: LibreTime Integration
+
+### Added
+- **Core LibreTime v2 API Integration** - Complete scheduling system
+  - `POST /api/schedule/planOne` - Schedule single episode
+  - `DELETE /api/schedule/unplanOne` - Remove single episode
+  - LibreTime client with comprehensive error handling
+  - Show/instance/playout management
+
+- **Database Schema Updates**
+  - Episodes: Added `libretimeInstanceId`, `libretimePlayoutId`, `scheduledAt`, `scheduledEnd`
+  - Shows: Added `libretimeShowId`
+  - Performance indexes for LibreTime fields
+
+- **Collision Detection System**
+  - Time slot overlap detection
+  - Track conflict resolution
+  - Automatic rollback on failures
+  - Idempotency key support (`${episodeId}:${slotStart}`)
+
+- **Authentication & Authorization**
+  - `checkScheduleAuth()` helper for role-based access
+  - Admin/staff only access to scheduling endpoints
+  - Proper error handling for unauthorized requests
+
+- **Rehydration System**
+  - `rehydrateEpisode()` service for missing LibreTime track data
+  - Automatic episode data recovery
+  - Queue-based processing for failed episodes
+
+### Changed
+- **Episode Scheduling Flow** - Complete rewrite
+  - Direct LibreTime API integration
+  - Real-time collision detection
+  - Proper error handling and rollback
+  - Support for both JSON body and query parameters
+
+### Fixed
+- **LibreTime API Compatibility** - Resolved multiple integration issues
+  - Fixed show creation and management
+  - Resolved instance mapping problems
+  - Corrected playout creation and deletion
+  - Fixed time zone handling (UTC normalization)
+
+---
+
+## [2025-10-13] - Step 3B: Scheduler Wiring
+
+### Added
+- **Planner UI Integration** - Basic scheduling interface
+  - Drag-and-drop episode scheduling
+  - Calendar view with FullCalendar integration
+  - Episode filtering and management
+  - Real-time UI updates
+
+- **Episode Management**
+  - Episode creation and editing
+  - Show association and management
+  - Media file handling and storage
+  - Publication status management
+
+### Changed
+- **Database Schema** - Initial LibreTime preparation
+  - Added basic LibreTime reference fields
+  - Episode metadata structure
+  - Show configuration updates
+
+---
+
+## [2025-10-12] - Authentication & Security
+
+### Added
+- **Token Management System**
+  - JWT token handling
+  - Token expiry management
+  - Secure authentication flow
+  - Session management
+
+### Fixed
+- **Token Expiry Issues** - Resolved authentication problems
+  - Fixed token refresh logic
+  - Improved error handling
+  - Better user experience for expired sessions
+
+---
+
+## [2025-10-11] - Initial Setup & Configuration
+
+### Added
+- **Development Environment**
+  - Docker containerization
+  - Environment configuration
+  - Database setup and migrations
+  - Development tooling
+
+- **Core Payload CMS Setup**
+  - Collections configuration
+  - API routes structure
+  - Admin interface setup
+  - File upload handling
+
+---
+
+## Technical Debt & Known Issues
+
+### High Priority
+- **Authentication Integration** - `checkScheduleAuth()` temporarily disabled
+  - Need proper Payload auth integration for Next.js App Router
+  - Currently bypassed for testing purposes
+
+- **LibreTime API Eventual Consistency** - ✅ RESOLVED via authoritative endpoint + retry logic
+  - Previously required two syncs due to LibreTime API caching delays
+  - Now uses `/schedule` endpoint (authoritative) instead of cached `/show-instances/files`
+  - Retry logic (3 attempts, exponential backoff) achieves 95%+ single-sync success rate
+  - Graceful degradation: If API is slow, defers to second sync (rare)
+
+### Medium Priority
+- **Error Handling** - Some edge cases need improvement
+  - Better handling of LibreTime API timeouts
+  - More robust conflict resolution
+  - Enhanced logging and monitoring
+
+### Low Priority
+- **Performance Optimization** - Future improvements
+  - Batch operation optimization
+  - Caching for LibreTime API calls
+  - Database query optimization
+
+---
+
+## Migration Notes
+
+### Database Changes
+When upgrading, ensure the following database migrations are applied:
+1. Add LibreTime fields to Episodes collection
+2. Add LibreTime fields to Shows collection  
+3. Create performance indexes
+4. Update existing episodes with default values
+
+### Configuration Changes
+Required environment variables:
+- `LIBRETIME_API_URL` - LibreTime API endpoint
+- `LIBRETIME_API_KEY` - API authentication key
+- `ALLOW_NAME_MATCH` - Show name matching fallback
+
+### API Changes
+- New endpoints: `/api/schedule/planOne`, `/api/schedule/unplanOne`, `/api/schedule/diff-range`, `/api/schedule/apply-range`
+- Existing endpoints remain unchanged
+- Backward compatibility maintained
+
+---
+
+## Contributing
+
+When adding new features or making changes:
+1. Update this changelog with your changes
+2. Include migration notes if database changes are made
+3. Update API documentation
+4. Add appropriate tests
+5. Update the relevant documentation in `/docs`
+
+---
+
+*This changelog is maintained alongside the codebase and should be updated with every significant change.*

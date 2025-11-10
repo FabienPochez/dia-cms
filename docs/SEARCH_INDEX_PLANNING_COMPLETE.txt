@@ -1,0 +1,262 @@
+================================================================================
+SEARCH INDEX PREPARATION - PLANNING PHASE COMPLETE ✅
+================================================================================
+
+Date: 2025-10-27
+Phase: Planning Only (No indexes created yet)
+Status: Ready for Implementation Approval
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+✅ WHAT WAS DONE:
+  • Inspected schemas for shows, episodes, and hosts collections
+  • Audited all existing indexes (18 total across 3 collections)
+  • Identified 3 missing indexes needed for search MVP
+  • Created inspection script (inspect-search-indexes.js)
+  • Created index creation script (create-search-indexes-mvp.js)
+  • Tested creation script with dry-run (successful)
+  • Documented everything in comprehensive planning docs
+  • Updated CHANGELOG with planning section
+
+✅ KEY FINDING:
+  • episodes.show_1 already exists! (auto-created by Payload)
+  • Only need to create 3 indexes instead of 4
+
+❌ NOT DONE (Intentionally):
+  • No indexes were created (planning only, as requested)
+  • No text indexes (deferred to Phase 2)
+  • No production changes made
+
+================================================================================
+CURRENT STATE (BASELINE - 2025-10-27)
+================================================================================
+
+Shows Collection:         4 indexes
+  ✅ _id, updatedAt, slug (unique), createdAt
+  ❌ Missing: title, subtitle, description indexes
+
+Episodes Collection:      10 indexes
+  ✅ _id, createdAt, updatedAt, show, libretimeTrackId, 
+     libretimeFilepathRelative, scheduledAt, scheduledEnd,
+     idx_schedStart_end, slug (unique+sparse)
+  ✅ Already has: show_1 (JOIN FIELD - no action needed!)
+  ❌ Missing: genres index
+
+Hosts Collection:         4 indexes
+  ✅ _id, updatedAt, createdAt, slug (unique+sparse)
+  ❌ Missing: name index
+
+Total Current Indexes:    18
+Text Indexes:             0 (none present)
+
+================================================================================
+PROPOSED CHANGES (3 NEW INDEXES)
+================================================================================
+
+1. episodes.genres_1
+   Type:    Multikey index (array field)
+   Keys:    { genres: 1 }
+   Purpose: Filter episodes by genre (array lookup)
+   Query:   db.episodes.find({ genres: { $in: [genreId1, genreId2] } })
+
+2. shows.title_1_subtitle_1_description_1
+   Type:    Compound index (3 fields)
+   Keys:    { title: 1, subtitle: 1, description: 1 }
+   Purpose: Text search on show metadata (starts-with/contains)
+   Query:   db.shows.find({ title: /^search/i })
+
+3. hosts.name_1
+   Type:    Single-field index
+   Keys:    { name: 1 }
+   Purpose: Search hosts by name
+   Query:   db.hosts.find({ name: /^search/i })
+
+Total After Creation:     21 indexes (+3)
+
+================================================================================
+FILES CREATED
+================================================================================
+
+📄 Planning Documents:
+   docs/SEARCH_INDEX_PLAN_README.md           (Navigation & Quick Start)
+   docs/SEARCH_INDEX_PLAN_SUMMARY.md          (Executive Summary, 5-min)
+   docs/SEARCH_INDEX_PLAN_MVP.md              (Full Plan, 20-min, 12 sections)
+   docs/SEARCH_INDEX_BASELINE.txt             (Current state snapshot)
+   docs/SEARCH_INDEX_PLANNING_COMPLETE.txt    (This file)
+
+🔧 Scripts:
+   scripts/db/inspect-search-indexes.js       (Audit existing indexes)
+   scripts/db/create-search-indexes-mvp.js    (Create missing indexes)
+
+📝 CHANGELOG:
+   CHANGELOG.md (lines 18-58)                 (Planning section added)
+
+================================================================================
+NEXT STEPS (WHEN READY TO IMPLEMENT)
+================================================================================
+
+1. Review Planning Docs
+   → Start with: docs/SEARCH_INDEX_PLAN_SUMMARY.md
+   → Full details: docs/SEARCH_INDEX_PLAN_MVP.md
+
+2. Verify Baseline (Optional)
+   → docker compose exec payload node scripts/db/inspect-search-indexes.js
+   → Confirm state hasn't changed since planning
+
+3. Execute Index Creation
+   → docker compose exec payload node scripts/db/create-search-indexes-mvp.js --dry-run
+   → docker compose exec payload node scripts/db/create-search-indexes-mvp.js
+
+4. Verify Creation
+   → docker compose exec payload node scripts/db/inspect-search-indexes.js
+   → Should show 21 total indexes (18 + 3)
+
+5. Smoke Test (Optional)
+   → Connect to MongoDB and test with explain()
+   → Verify IXSCAN usage instead of COLLSCAN
+
+6. Update CHANGELOG
+   → Move planning section to new dated entry
+   → Document actual results and performance improvements
+
+================================================================================
+ROLLBACK (IF NEEDED)
+================================================================================
+
+If indexes cause issues, rollback is simple:
+
+  docker compose exec mongo mongosh dia-cms
+  
+  db.episodes.dropIndex('genres_1');
+  db.shows.dropIndex('title_1_subtitle_1_description_1');
+  db.hosts.dropIndex('name_1');
+
+================================================================================
+RISK ASSESSMENT
+================================================================================
+
+Risk Level: 🟢 LOW
+
+Why Low Risk?
+  • Small dataset (~1000 episodes, ~40 shows, ~50 hosts)
+  • Background index builds (non-blocking, MongoDB 4.2+)
+  • Minimal write throughput impact (<5% expected)
+  • Simple rollback (3 dropIndex commands)
+  • No text indexes (simple ascending indexes only)
+
+Limitations (Acceptable for MVP):
+  • Regex leading wildcard queries won't use indexes efficiently
+    Example: db.shows.find({ title: /.*music/i }) (contains, leading wildcard)
+  • No relevance scoring (deferred to Phase 2 text indexes)
+  • Compound index won't optimize subtitle-only queries
+
+================================================================================
+SUCCESS CRITERIA
+================================================================================
+
+✅ Planning Phase (Complete):
+   [x] Schema audit for shows, episodes, hosts
+   [x] Baseline index capture (SEARCH_INDEX_BASELINE.txt)
+   [x] Script creation (inspect + create scripts)
+   [x] Dry-run testing (successful, 3 indexes would be created)
+   [x] Documentation (README, summary, full plan, baseline)
+   [x] CHANGELOG entry (planning section)
+   [x] Risk assessment
+
+⏸️ Implementation Phase (Awaiting Approval):
+   [ ] Team review of planning docs
+   [ ] Approval to proceed
+   [ ] Execute index creation script
+   [ ] Verify with inspection script
+   [ ] Smoke test representative queries
+   [ ] Update CHANGELOG with results
+   [ ] Archive planning docs for reference
+
+================================================================================
+QUERY PERFORMANCE EXPECTATIONS
+================================================================================
+
+After Index Creation:
+
+Episode Genre Filter:
+  • Before: Collection scan (~1000 docs)
+  • After:  Multikey index scan (genres_1)
+  • Speedup: 5-50x faster (depends on selectivity)
+
+Show Text Search (starts-with):
+  • Before: Collection scan (~40 docs)
+  • After:  Compound index prefix scan (title_1_subtitle_1_description_1)
+  • Speedup: 5-20x faster (small collection, but consistent)
+
+Host Name Search:
+  • Before: Collection scan (~50 docs)
+  • After:  Single-field index scan (name_1)
+  • Speedup: 3-10x faster
+
+Informal Timing Goal: <50ms for typical searches
+
+================================================================================
+PHASE 2 PREVIEW (TEXT INDEXES)
+================================================================================
+
+Deferred Features (Not in MVP):
+  • Full-text search with $text operator
+  • Relevance ranking with $meta: "textScore"
+  • Language-specific stemming (English)
+  • Better wildcard/contains query performance
+
+Example Text Index (Phase 2):
+  db.shows.createIndex(
+    { title: "text", subtitle: "text", description: "text" },
+    { weights: { title: 10, subtitle: 5, description: 1 } }
+  )
+
+When to Upgrade to Phase 2:
+  • When regex performance becomes insufficient
+  • When relevance ranking is required
+  • When user search expectations increase
+
+================================================================================
+CONTACT & REFERENCES
+================================================================================
+
+Planning Documents:
+  • README:  docs/SEARCH_INDEX_PLAN_README.md
+  • Summary: docs/SEARCH_INDEX_PLAN_SUMMARY.md
+  • Full:    docs/SEARCH_INDEX_PLAN_MVP.md
+  • Baseline: docs/SEARCH_INDEX_BASELINE.txt
+
+Scripts:
+  • Inspect: scripts/db/inspect-search-indexes.js
+  • Create:  scripts/db/create-search-indexes-mvp.js
+
+Related Work:
+  • CHANGELOG: Line 18-58 (Planning section)
+  • Oct 21, 2025: Database indexing optimization (scheduling)
+
+MongoDB Docs:
+  • Index Strategies: https://www.mongodb.com/docs/manual/applications/indexes/
+  • Multikey Indexes: https://www.mongodb.com/docs/manual/core/index-multikey/
+  • Compound Indexes: https://www.mongodb.com/docs/manual/core/index-compound/
+
+================================================================================
+SUMMARY
+================================================================================
+
+✅ Planning is COMPLETE and documented
+✅ Scripts are CREATED and tested (dry-run successful)
+✅ Baseline is CAPTURED (SEARCH_INDEX_BASELINE.txt)
+✅ Risk is LOW (small dataset, simple rollback)
+✅ Impact is POSITIVE (5-50x query speedup expected)
+
+Ready for: Implementation approval and execution
+Next action: Review docs and approve for production
+
+================================================================================
+END OF PLANNING REPORT
+================================================================================
+
+
+
