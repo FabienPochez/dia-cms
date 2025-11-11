@@ -25,6 +25,7 @@ This changelog documents all significant changes to the Payload CMS backend serv
 - **LibreTime proxy API** – `src/app/api/libretime/[...path]/route.ts` now accepts the inferred route context from Next 15 without tripping the build, leaving the forwarding logic untouched.
 - **Dev dependency housekeeping** – Added `@eslint/eslintrc` so lint tooling can be restored once the rule backlog is addressed.
 - **Deprecated backup config** – Removed the stale `src/payload.config-backup.ts` to prevent accidental imports during builds.
+- **Noon canary** – `scripts/cron/noon_canary.sh` now loads `PAYLOAD_API_KEY` from `.env` (or accepts `CANARY_AUTH_HEADER`) and sends the required Authorization header to the deterministic feed, eliminating spurious 401 alerts.
 
 ### Validation
 - `curl -s -X POST http://localhost:3000/api/lifecycle/postair-archive` (200 OK, archive script executed)
