@@ -245,11 +245,17 @@ npm run generate:importmap
 
 This updates `src/app/(payload)/admin/importMap.js` to register your component.
 
-**4. Restart Server**:
+**4. Build & Restart (no stream downtime)**:
 
 ```bash
-docker compose restart payload
+# Build Next.js artifacts while production keeps running
+docker compose --profile build run --rm payload-build
+
+# Fast restart (uses the freshly built .next directory)
+docker compose up -d payload
 ```
+
+> ⚠️ If the restart command complains about missing `.next`, it means the build step failed—check the logs from the `payload-build` run, fix the issue, then rerun the build.
 
 ### Key Payload v3 Hooks
 
@@ -279,7 +285,11 @@ See `src/admin/components/SendResetButton.tsx` for a complete example of:
 - **Component not showing**: Check browser console for errors
 - **"Module not found"**: Run `npm run generate:importmap` and restart
 - **`documentId` is undefined**: You're on create view (new document), check `if (!documentId) return null`
-- **Cached old code**: Clear `.next` folder: `docker compose exec payload rm -rf .next && docker compose restart payload`
+- **Cached old code / missing chunks**: Regenerate artifacts via:
+  ```bash
+  docker compose --profile build run --rm payload-build
+  docker compose up -d payload
+  ```
 
 ### Configuration Files
 

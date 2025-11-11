@@ -27,6 +27,7 @@ This changelog documents all significant changes to the Payload CMS backend serv
 - **Deprecated backup config** – Removed the stale `src/payload.config-backup.ts` to prevent accidental imports during builds.
 - **Noon canary** – `scripts/cron/noon_canary.sh` now loads `PAYLOAD_API_KEY` from `.env` (or accepts `CANARY_AUTH_HEADER`) and sends the required Authorization header to the deterministic feed, eliminating spurious 401 alerts.
 - **Payload auth cookies** – `Users` collection cookies now adapt to environment (`secure`/`sameSite` relaxed and domain unset in dev) so local hot-reload sessions at `localhost:3300` can log in without fighting cross-site cookie rules.
+- **Zero-downtime rebuild** – Added a `payload-build` helper (`docker compose --profile build run --rm payload-build`), and the main `payload` service now refuses to start if `.next` artifacts are missing, keeping the production build process fast while allowing separate build runs.
 
 ### Validation
 - `curl -s -X POST http://localhost:3000/api/lifecycle/postair-archive` (200 OK, archive script executed)
