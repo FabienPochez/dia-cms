@@ -257,6 +257,35 @@ docker compose up -d payload
 
 > ⚠️ If the restart command complains about missing `.next`, it means the build step failed—check the logs from the `payload-build` run, fix the issue, then rerun the build.
 
+### Local dev access (`payload-dev`)
+
+The hot-reload `payload-dev` service listens on port `3300` and shares the same volume as production. Forward the ports through SSH before opening a browser tab:
+
+```bash
+ssh diaradio-prod
+```
+
+With the SSH config entry:
+
+```ssh-config
+Host diaradio-prod
+    HostName 46.62.141.69
+    User root
+    LocalForward 3000 localhost:3000
+    LocalForward 3300 localhost:3000
+```
+
+Once the tunnel is active:
+- `http://localhost:3000` → production Payload
+- `http://localhost:3300` → dev Payload (hot reload, use your admin credentials)
+
+Start/stop the dev container as needed:
+
+```bash
+docker compose --profile dev up -d payload-dev   # start
+docker compose --profile dev stop payload-dev    # stop
+```
+
 ### Key Payload v3 Hooks
 
 - **`useDocumentInfo()`**: Get current document's `id`, `collectionSlug`, `globalSlug`
