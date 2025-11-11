@@ -17,6 +17,17 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-11] - Liquidsoap Jingle Safety Net Restored
+
+### Fixed
+- **Jingle fallback** – Re-applied the fallback wrapper to `/srv/libretime/patches/liquidsoap/ls_script.liq` (restored `schedule_or_jingles = fallback([stream_queue, jingles])` from the 2025-10-23 backup) so brief schedule gaps fall back to `DIA!_radio_jingle_1.mp3`. Restarted `libretime-liquidsoap-1` to load the updated script.
+
+### Validation
+- `docker exec libretime-liquidsoap-1 sed -n '146,170p' /src/libretime_playout/liquidsoap/1.4/ls_script.liq`
+- `docker logs --since 1m libretime-liquidsoap-1` (jingle file accepted on startup)
+
+---
+
 ## [2025-11-10] - Revert Stream Watchdog Guardrails
 
 ### Changed

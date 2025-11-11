@@ -1207,17 +1207,23 @@ SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 TZ=Europe/Paris
 
-# Pre-air (every 15m) — prevent overlap with flock
-*/15 * * * * /usr/bin/flock -n /tmp/dia-preair.lock docker compose -f /srv/payload/docker-compose.yml exec -T dev-scripts sh -lc 'npx tsx scripts/cron/preair_rehydrate.ts' >> /var/log/dia-cron/preair-rehydrate.log 2>&1
+# Pre-air (every 15m, offset) — prevent overlap with flock
+7,22,37,52 * * * * /usr/bin/flock -n /tmp/dia-preair.lock curl -fsS --retry 2 --retry-delay 10 -X POST https://content.diaradio.live/api/lifecycle/preair-rehydrate >> /var/log/dia-cron/preair-rehydrate.log 2>&1
 
-# Post-air (every 10m) — prevent overlap with flock
-*/10 * * * * /usr/bin/flock -n /tmp/dia-postair.lock docker compose -f /srv/payload/docker-compose.yml exec -T dev-scripts sh -lc 'npx tsx scripts/cron/postair_archive_cleanup.ts' >> /var/log/dia-cron/postair-archive.log 2>&1
+# Post-air (every 15m, offset) — prevent overlap with flock
+12,27,42,57 * * * * /usr/bin/flock -n /tmp/dia-postair.lock curl -fsS --retry 2 --retry-delay 10 -X POST https://content.diaradio.live/api/lifecycle/postair-archive >> /var/log/dia-cron/postair-archive.log 2>&1
 
 # File exists check (daily at 3 AM) — prevent playout errors from missing files
 0 3 * * * /usr/bin/flock -n /tmp/dia-filecheck.lock /srv/payload/scripts/fix-libretime-file-exists.sh >> /var/log/dia-cron/file-exists-check.log 2>&1
 
 # Stream health check (every minute) — detect and fix playout desync
 * * * * * /usr/bin/flock -n /tmp/dia-health.lock /srv/payload/scripts/stream-health-check.sh
+
+# System guard (every 5m) — watch for run queue / swap / OOM spikes
+*/5 * * * * /usr/bin/flock -n /tmp/dia-system-watch.lock /srv/payload/scripts/cron/system_health_guard.sh
+
+# Noon canary (daily 12:05 CET) — verify Payload endpoints
+5 12 * * * /usr/bin/flock -n /tmp/dia-noon-canary.lock /srv/payload/scripts/cron/noon_canary.sh
 ```
 
 **Key Features**:
@@ -1235,11 +1241,8 @@ Automatically ensures working files are available for scheduled episodes.
 **Script**: `scripts/cron/preair_rehydrate.ts`
 
 ```bash
-# Manual execution (inside container)
-docker exec -it payload-dev-scripts-1 sh -lc 'npx tsx scripts/cron/preair_rehydrate.ts'
-
-# Or from inside the container
-npx tsx scripts/cron/preair_rehydrate.ts
+# Manual HTTP trigger (inside server tunnel)
+curl -X POST http://localhost:3000/api/lifecycle/preair-rehydrate
 ```
 
 **Process**:
@@ -1263,11 +1266,8 @@ Automatically updates airing metrics and cleans up working files after episodes 
 **Script**: `scripts/cron/postair_archive_cleanup.ts`
 
 ```bash
-# Manual execution (inside container)
-docker exec -it payload-dev-scripts-1 sh -lc 'npx tsx scripts/cron/postair_archive_cleanup.ts'
-
-# Or from inside the container
-npx tsx scripts/cron/postair_archive_cleanup.ts
+# Manual HTTP trigger (inside server tunnel)
+curl -X POST http://localhost:3000/api/lifecycle/postair-archive
 ```
 
 **Process**:
@@ -1282,6 +1282,32 @@ npx tsx scripts/cron/postair_archive_cleanup.ts
 5. If not archived: archive to legacy, then cleanup
 6. Log operations to `/srv/media/logs/cron-postair-archive.jsonl` (JSONL)
 7. Execution logs to `/var/log/dia-cron/postair-archive.log` (text)
+
+#### Cron C: System Health Guard
+Lightweight watchdog that records system pressure signals (run queue, swap usage, kernel OOM events) every five minutes and mirrors warnings into syslog.
+
+```bash
+# Manual execution
+/srv/payload/scripts/cron/system_health_guard.sh
+```
+
+**Thresholds**:
+- Warn when `procs_running` exceeds 16
+- Warn when swap usage exceeds 512 MB
+- Log any kernel OOM kills detected in the last 5 minutes
+
+#### Cron D: Noon Canary Probe
+Daily smoke test that hits key Payload endpoints shortly after noon to confirm the stack responds before the busy scheduling window.
+
+```bash
+# Manual execution (inside server tunnel)
+/srv/payload/scripts/cron/noon_canary.sh
+```
+
+**Checks**:
+- `GET /api/schedule/deterministic`
+- `GET /admin`
+- `POST /api/lifecycle/preair-rehydrate`
 
 **Features**:
 - Direct function calls (no CLI spawning)
