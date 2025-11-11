@@ -1,6 +1,10 @@
 import type { CollectionConfig } from 'payload'
 import { adminPanelOnly } from '../access/adminPanelOnly'
 
+const isProd = process.env.NODE_ENV === 'production'
+const cookieDomain =
+  process.env.PAYLOAD_COOKIE_DOMAIN || (isProd ? 'content.diaradio.live' : undefined)
+
 export const Users: CollectionConfig = {
   slug: 'users',
   auth: {
@@ -10,9 +14,13 @@ export const Users: CollectionConfig = {
     // keep auth enabled for admin users
     // set cookie attributes here as the single source of truth
     cookies: {
-      sameSite: 'None',
-      secure: true,
-      domain: 'content.diaradio.live', // exact host of the API
+      sameSite: isProd ? 'None' : 'Lax',
+      secure: isProd,
+      ...(cookieDomain
+        ? {
+            domain: cookieDomain,
+          }
+        : {}),
     },
     // Enable transactional emails
     forgotPassword: {
