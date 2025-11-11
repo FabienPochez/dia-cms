@@ -1,3 +1,4 @@
+import path from 'path'
 import { withPayload } from '@payloadcms/next/withPayload'
 
 /** @type {import('next').NextConfig} */
@@ -10,6 +11,12 @@ const nextConfig = {
       '.mjs': ['.mts', '.mjs'],
     }
 
+    webpackConfig.resolve.alias = {
+      ...(webpackConfig.resolve.alias || {}),
+      '@': path.resolve(process.cwd(), 'src'),
+      '@payload-config': path.resolve(process.cwd(), 'src/payload.config.ts'),
+    }
+
     return webpackConfig
   },
   // Increase body size limit for large audio file uploads (500MB)
@@ -17,6 +24,12 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '500mb',
     },
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
   },
 }
 

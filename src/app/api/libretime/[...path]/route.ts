@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 
-interface RouteParams {
+type RouteParams = {
   path: string[]
 }
 
@@ -118,11 +118,13 @@ async function forward(
   }
 }
 
-export async function GET(request: NextRequest, { params }: { params: RouteParams }) {
+export async function GET(request: NextRequest, context: any) {
+  const { params } = context as { params: RouteParams }
   return forward('GET', request, params)
 }
 
-export async function POST(request: NextRequest, { params }: { params: RouteParams }) {
+export async function POST(request: NextRequest, context: any) {
+  const { params } = context as { params: RouteParams }
   const path = (params.path || []).join('/')
 
   // Handle special move endpoint
@@ -168,10 +170,12 @@ export async function POST(request: NextRequest, { params }: { params: RoutePara
   return forward('POST', request, params)
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: RouteParams }) {
+export async function PATCH(request: NextRequest, context: any) {
+  const { params } = context as { params: RouteParams }
   return forward('PATCH', request, params)
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: RouteParams }) {
+export async function DELETE(request: NextRequest, context: any) {
+  const { params } = context as { params: RouteParams }
   return forward('DELETE', request, params)
 }

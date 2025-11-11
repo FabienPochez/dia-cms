@@ -14,10 +14,11 @@ services:
 
 
     working_dir: /app/
-    command: sh -c "apk add --no-cache ffmpeg && npm install && npm run build && npm run start"
+    command: sh -c "apk add --no-cache ffmpeg && npm install --include=dev && npm run build && npm run start"
     environment:
       NODE_ENV: production
       NODE_OPTIONS: --max_old_space_size=1536
+      NPM_CONFIG_PRODUCTION: "false"
     depends_on:
       - mongo
       # - postgres
@@ -40,10 +41,11 @@ services:
       - ./payload/utils:/app/payload/utils
       - /srv/media:/srv/media
     working_dir: /app/
-    command: sh -c "apk add --no-cache ffmpeg && npm install && npm run dev"
+    command: sh -c "apk add --no-cache ffmpeg && npm install --include=dev && npm run dev"
     environment:
       NODE_ENV: development
       NODE_OPTIONS: --max_old_space_size=1536
+      NPM_CONFIG_PRODUCTION: "false"
     env_file:
       - .env
     networks:
