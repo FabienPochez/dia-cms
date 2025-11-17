@@ -1022,6 +1022,7 @@ const PlannerViewWithLibreTime: React.FC = () => {
               onEventDrop={handleEventDrop}
               onEventResize={handleEventResize}
               onEventDelete={handleEventDelete}
+              onEpisodePlay={setPlayingEpisode}
             />
           </div>
         </div>

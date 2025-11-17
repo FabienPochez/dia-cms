@@ -584,7 +584,7 @@ const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
                     </div>
                   )}
 
-                  {/* Metadata Badges (no genres in V1) */}
+                  {/* Metadata Badges (Energy, Mood, Tone) */}
                   {(episode.energy || episode.mood || episode.tone) && (
                     <div
                       style={{
@@ -639,6 +639,38 @@ const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
                           {Array.isArray(episode.tone) ? episode.tone[0] : episode.tone}
                         </span>
                       )}
+                    </div>
+                  )}
+
+                  {/* Genres Tags (separate line) */}
+                  {episode.genres && Array.isArray(episode.genres) && episode.genres.length > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '3px',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      {episode.genres.map((genre: any, index: number) => {
+                        const genreName = typeof genre === 'object' && genre !== null ? genre.title || genre.name : genre
+                        return (
+                          <span
+                            key={index}
+                            style={{
+                              fontSize: '8px',
+                              padding: '2px 5px',
+                              borderRadius: '8px',
+                              background: '#dbeafe',
+                              color: '#1e40af',
+                              fontWeight: '500',
+                              textTransform: 'capitalize',
+                            }}
+                          >
+                            {genreName}
+                          </span>
+                        )
+                      })}
                     </div>
                   )}
                   {isDisabled && (

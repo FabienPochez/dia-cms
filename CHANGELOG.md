@@ -20,6 +20,18 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-17] - Planner UI Enhancements
+
+### Added
+- **Genres Display in EventPalette** – Episode cards in the planner EventPalette now display genre tags on a separate line below energy/mood/tone badges. Genres appear as blue tags with smaller font size, supporting both object (relationship) and string formats. Location: `src/admin/components/EventPalette.tsx`
+- **Play Button in Calendar Events** – Calendar event cards now include a small blue play button (▶) next to the delete button. Clicking the play button fetches full episode data and triggers playback in the fixed audio player, enabling quick audio preview directly from scheduled events. Location: `src/admin/components/CalendarComponent.tsx`
+
+### Changed
+- **CalendarComponent Props** – Added `onEpisodePlay` prop to `CalendarComponent` interface and implementation. The play button only appears when both `onEpisodePlay` callback and `episodeId` are available. Location: `src/admin/components/CalendarComponent.tsx`
+- **PlannerViewWithLibreTime Integration** – Calendar component now receives `setPlayingEpisode` as `onEpisodePlay` prop, enabling audio playback from calendar events. Location: `src/admin/components/PlannerViewWithLibreTime.tsx`
+
+---
+
 ## [2025-11-17] - Audio Player Integration
 
 ### Added

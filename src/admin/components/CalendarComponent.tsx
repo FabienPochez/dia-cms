@@ -13,10 +13,11 @@ interface CalendarComponentProps {
   onEventDrop?: (info: any) => void
   onEventResize?: (info: any) => void
   onEventDelete?: (episodeId: string, libretimeScheduleId?: number) => void
+  onEpisodePlay?: (episode: any) => void
 }
 
 const CalendarComponent = React.forwardRef<FullCalendar, CalendarComponentProps>(
-  ({ events = [], onEventReceive, onEventDrop, onEventResize, onEventDelete }, ref) => {
+  ({ events = [], onEventReceive, onEventDrop, onEventResize, onEventDelete, onEpisodePlay }, ref) => {
     const calendarRef = useRef<FullCalendar>(null)
 
     // Expose ref to parent
@@ -286,11 +287,36 @@ const CalendarComponent = React.forwardRef<FullCalendar, CalendarComponentProps>
       fcEventMain.appendChild(badgesContainer)
     }, [])
 
-    // Custom event content renderer with delete button
+    // Custom event content renderer with delete button and play button
     const renderEventContent = useCallback(
       (eventInfo: any) => {
         const episodeId = eventInfo.event.extendedProps?.episodeId
         const libretimeScheduleId = eventInfo.event.extendedProps?.libretimeScheduleId
+
+        const handlePlayClick = async (e: React.MouseEvent) => {
+          e.stopPropagation()
+          if (!episodeId || !onEpisodePlay) return
+
+          try {
+            // Fetch full episode data with depth=1 to populate media relationship
+            const response = await fetch(`/api/episodes/${episodeId}?depth=1`, {
+              method: 'GET',
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            })
+
+            if (!response.ok) {
+              throw new Error(`Failed to fetch episode: ${response.status}`)
+            }
+
+            const episodeData = await response.json()
+            onEpisodePlay(episodeData)
+          } catch (error) {
+            console.error('[CalendarComponent] Error fetching episode for playback:', error)
+          }
+        }
 
         return (
           <div
@@ -300,6 +326,7 @@ const CalendarComponent = React.forwardRef<FullCalendar, CalendarComponentProps>
               alignItems: 'flex-start',
               height: '100%',
               padding: '2px 4px',
+              gap: '4px',
             }}
           >
             <div
@@ -312,31 +339,62 @@ const CalendarComponent = React.forwardRef<FullCalendar, CalendarComponentProps>
             >
               {eventInfo.event.title}
             </div>
-            <button
-              onClick={(e) => handleDeleteClick(e, episodeId, libretimeScheduleId)}
+            <div
               style={{
-                background: 'rgba(255, 0, 0, 0.8)',
-                border: 'none',
-                borderRadius: '50%',
-                width: '16px',
-                height: '16px',
-                color: 'white',
-                fontSize: '10px',
-                cursor: 'pointer',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginLeft: '4px',
+                gap: '2px',
                 flexShrink: 0,
               }}
-              title="Delete event"
             >
-              ×
-            </button>
+              {onEpisodePlay && episodeId && (
+                <button
+                  onClick={handlePlayClick}
+                  style={{
+                    background: 'rgba(0, 123, 255, 0.8)',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '16px',
+                    height: '16px',
+                    color: 'white',
+                    fontSize: '9px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    lineHeight: 1,
+                  }}
+                  title="Play episode"
+                >
+                  ▶
+                </button>
+              )}
+              <button
+                onClick={(e) => handleDeleteClick(e, episodeId, libretimeScheduleId)}
+                style={{
+                  background: 'rgba(255, 0, 0, 0.8)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '16px',
+                  height: '16px',
+                  color: 'white',
+                  fontSize: '10px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+                title="Delete event"
+              >
+                ×
+              </button>
+            </div>
           </div>
         )
       },
-      [handleDeleteClick],
+      [handleDeleteClick, onEpisodePlay],
     )
 
     // Handle keyboard shortcuts
