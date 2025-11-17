@@ -119,13 +119,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ episode, compact = false, onL
 
     // For MediaTrack files, fetch with credentials and create blob URL
     if (audioSource.type === 'mediatrack' && audioSource.url) {
-      // Clean up previous blob URL if it exists
-      if (mediaBlobUrl) {
-        URL.revokeObjectURL(mediaBlobUrl)
-        setMediaBlobUrl(null)
-      }
-
       // Fetch the file with credentials
+      let cancelled = false
+      
       fetch(audioSource.url, {
         method: 'GET',
         credentials: 'include', // Include cookies/auth
@@ -134,19 +130,46 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ episode, compact = false, onL
         },
       })
         .then(async (response) => {
+          if (cancelled) return
           if (!response.ok) {
             throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`)
           }
           const blob = await response.blob()
+          if (cancelled) {
+            URL.revokeObjectURL(URL.createObjectURL(blob))
+            return
+          }
           const blobUrl = URL.createObjectURL(blob)
           console.log('[AudioPlayer] Created blob URL for MediaTrack:', blobUrl)
           setMediaBlobUrl(blobUrl)
           onLoad?.()
         })
         .catch((error) => {
+          if (cancelled) return
           console.error('[AudioPlayer] Error fetching MediaTrack file:', error)
           onError?.(error.message || 'Failed to load audio file')
         })
+
+      // Cleanup: revoke blob URL if episode changes or component unmounts
+      return () => {
+        cancelled = true
+        setMediaBlobUrl((prevBlobUrl) => {
+          if (prevBlobUrl) {
+            console.log('[AudioPlayer] Cleaning up blob URL:', prevBlobUrl)
+            URL.revokeObjectURL(prevBlobUrl)
+          }
+          return null
+        })
+      }
+    } else {
+      // Not a MediaTrack, clear any existing blob URL
+      setMediaBlobUrl((prevBlobUrl) => {
+        if (prevBlobUrl) {
+          console.log('[AudioPlayer] Clearing blob URL (not MediaTrack):', prevBlobUrl)
+          URL.revokeObjectURL(prevBlobUrl)
+        }
+        return null
+      })
     }
 
     // Load SoundCloud Widget API script if needed
@@ -167,26 +190,11 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ episode, compact = false, onL
       } else {
         onLoad?.()
       }
-    } else {
+    } else if (audioSource.type !== 'mediatrack') {
+      // Only call onLoad if not MediaTrack (MediaTrack calls it after blob is created)
       onLoad?.()
     }
-    // Cleanup blob URL on unmount or when episode changes
-    return () => {
-      if (mediaBlobUrl) {
-        URL.revokeObjectURL(mediaBlobUrl)
-        setMediaBlobUrl(null)
-      }
-    }
   }, [episode, onLoad, onError])
-
-  // Separate cleanup effect for mediaBlobUrl
-  useEffect(() => {
-    return () => {
-      if (mediaBlobUrl) {
-        URL.revokeObjectURL(mediaBlobUrl)
-      }
-    }
-  }, [mediaBlobUrl])
 
   // Initialize SoundCloud widget when iframe loads
   useEffect(() => {
@@ -252,8 +260,11 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ episode, compact = false, onL
     // For MediaTrack, use blob URL if available (for authenticated files), otherwise use original URL
     const audioUrl = source.type === 'mediatrack' && mediaBlobUrl ? mediaBlobUrl : source.url
 
+    console.log('[AudioPlayer] Render check - source.type:', source.type, 'mediaBlobUrl:', mediaBlobUrl, 'audioUrl:', audioUrl)
+
     // Show loading state if we're fetching a MediaTrack blob
-    if (source.type === 'mediatrack' && !mediaBlobUrl) {
+    if (source.type === 'mediatrack' && !mediaBlobUrl && source.url) {
+      console.log('[AudioPlayer] Showing loading state (waiting for blob)')
       return (
         <div
           style={{
