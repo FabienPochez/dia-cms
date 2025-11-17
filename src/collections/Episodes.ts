@@ -545,6 +545,16 @@ const Episodes: CollectionConfig = {
       admin: { position: 'sidebar', readOnly: true }, // Always read-only
       access: { update: () => false },
     },
+    {
+      name: 'audioPlayer',
+      type: 'ui',
+      admin: {
+        position: 'sidebar',
+        components: {
+          Field: './admin/components/AudioPlayerField',
+        },
+      },
+    },
   ],
   hooks: {
     beforeChange: [

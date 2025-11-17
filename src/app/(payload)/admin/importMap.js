@@ -1,4 +1,5 @@
 import { default as default_92d45976e31c95fa529714ba469e7451 } from '../../../admin/components/SendResetButton'
+import { default as default_b140e96636d91a2ebae75865859359bc } from '../../../admin/components/AudioPlayerField'
 import { default as default_276f3912b9b9f21dadd87b9106c9274a } from '../../../admin/components/Logo'
 import { default as default_963cee1f58e0e29882bef7756bafe37b } from '../../../admin/components/HostDashboardRedirect'
 import { default as default_0fb490d4a732171b102416f8ef22bea9 } from '../../../admin/components/AfterLoginRedirect'
@@ -10,6 +11,7 @@ import { default as default_c6fd9e4c541f8783d915ee0916323cb7 } from '../../../ad
 
 export const importMap = {
   "./admin/components/SendResetButton#default": default_92d45976e31c95fa529714ba469e7451,
+  "./admin/components/AudioPlayerField#default": default_b140e96636d91a2ebae75865859359bc,
   "./admin/components/Logo#default": default_276f3912b9b9f21dadd87b9106c9274a,
   "./admin/components/HostDashboardRedirect#default": default_963cee1f58e0e29882bef7756bafe37b,
   "./admin/components/AfterLoginRedirect#default": default_0fb490d4a732171b102416f8ef22bea9,

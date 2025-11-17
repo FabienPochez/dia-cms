@@ -17,6 +17,8 @@ import {
 import { libreTimeApi } from '@/integrations/libretimeApi'
 import { plannerBus } from '../lib/plannerBus'
 import type { SyncWindowResult } from '@/lib/schedule/syncWindow'
+import FixedAudioPlayer from './FixedAudioPlayer'
+import type { Episode } from '../../../payload-types'
 
 // Dynamically import CalendarComponent only on client side
 const CalendarComponent = dynamic(() => import('./CalendarComponent'), {
@@ -92,6 +94,9 @@ const PlannerViewWithLibreTime: React.FC = () => {
 
   // Rehydrate feature state
   const [rehydrateInFlight, setRehydrateInFlight] = useState(false)
+
+  // Audio player state
+  const [playingEpisode, setPlayingEpisode] = useState<Episode | null>(null)
 
   // Calendar ref for accessing visible range
   const calendarRef = useRef<FullCalendar | null>(null)
@@ -999,7 +1004,7 @@ const PlannerViewWithLibreTime: React.FC = () => {
         >
           {/* Episode Palette - Left Column */}
           <div style={{ width: '25%', minWidth: '250px' }}>
-            <DynamicEventPalette />
+            <DynamicEventPalette onEpisodePlay={setPlayingEpisode} />
           </div>
 
           {/* Calendar - Right Column */}
@@ -1111,6 +1116,8 @@ const PlannerViewWithLibreTime: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Fixed Audio Player */}
+      <FixedAudioPlayer episode={playingEpisode} onClose={() => setPlayingEpisode(null)} />
     </div>
   )
 }

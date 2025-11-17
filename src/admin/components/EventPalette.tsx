@@ -13,7 +13,11 @@ import { plannerBus, type PlannerEventPayload } from '../lib/plannerBus'
 import { TabBar } from './TabBar'
 // import { useVisibilityPolling } from '../hooks/useVisibilityPolling' // Uncomment to enable polling
 
-const EventPalette: React.FC = () => {
+interface EventPaletteProps {
+  onEpisodePlay?: (episode: any) => void
+}
+
+const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const draggableRef = useRef<Draggable | null>(null)
   const episodeIdsHashRef = useRef<string>('')
@@ -490,6 +494,58 @@ const EventPalette: React.FC = () => {
                     >
                       ▶ {episode.airCount} play{episode.airCount === 1 ? '' : 's'}
                     </div>
+                  )}
+
+                  {/* Play Button */}
+                  {onEpisodePlay && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        if (!episode.episodeId) return
+
+                        try {
+                          console.log('[EventPalette] Play button clicked for episode:', episode.episodeId)
+                          // Fetch full episode data with depth=1 to populate media relationship
+                          const response = await fetch(`/api/episodes/${episode.episodeId}?depth=1`, {
+                            method: 'GET',
+                            credentials: 'include',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                          })
+
+                          if (!response.ok) {
+                            throw new Error(`Failed to fetch episode: ${response.status}`)
+                          }
+
+                          const episodeData = await response.json()
+                          console.log('[EventPalette] Episode data fetched:', {
+                            id: episodeData.id,
+                            title: episodeData.title,
+                            track_id: episodeData.track_id,
+                            media: episodeData.media,
+                            libretimeFilepathRelative: episodeData.libretimeFilepathRelative,
+                          })
+                          onEpisodePlay(episodeData)
+                        } catch (error) {
+                          console.error('[EventPalette] Error fetching episode for playback:', error)
+                        }
+                      }}
+                      style={{
+                        marginTop: '8px',
+                        padding: '6px 10px',
+                        fontSize: '11px',
+                        backgroundColor: '#007bff',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        width: '100%',
+                      }}
+                      title="Play episode"
+                    >
+                      ▶️ Play
+                    </button>
                   )}
 
                   {/* Plan Status Badge */}

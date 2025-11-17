@@ -20,6 +20,49 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-17] - Audio Player Integration
+
+### Added
+- **Audio Player in Episode Admin** – Audio player component added to episode detail pages in Payload admin sidebar, supporting multiple audio sources with priority logic: SoundCloud embeds (for archive episodes with `track_id`), MediaTrack files (for uploaded episodes), and LibreTime files (for aired episodes). Component: `src/admin/components/AudioPlayerField.tsx`
+- **Fixed Audio Player in Planner** – Fixed audio player at the bottom of the planner view that appears when clicking play buttons on episode cards. Displays current episode title and show name, with compact player controls. Component: `src/admin/components/FixedAudioPlayer.tsx`
+- **Audio Player Component** – Reusable audio player component (`src/admin/components/AudioPlayer.tsx`) with audio source priority logic and authentication handling:
+  - SoundCloud: Uses iframe embed with SoundCloud Widget API for programmatic control
+  - MediaTrack: Fetches files with credentials via `fetch()` API, creates blob URLs for authenticated playback
+  - LibreTime: Direct file access via API endpoints
+- **Play Buttons in EventPalette** – Play buttons (▶️) added to each episode card in the planner EventPalette. Clicking a button fetches full episode data with `depth=1` and triggers playback in the fixed audio player.
+
+### Changed
+- **Episodes Collection** – Added UI field `audioPlayer` to sidebar for audio player display in episode detail views. Location: `src/collections/Episodes.ts`
+- **PlannerViewWithLibreTime** – Integrated `FixedAudioPlayer` component with state management for current playing episode. Passes `onEpisodePlay` callback to `EventPalette`. Location: `src/admin/components/PlannerViewWithLibreTime.tsx`
+- **EventPalette** – Added `onEpisodePlay` prop and play button functionality to episode cards. Location: `src/admin/components/EventPalette.tsx`
+- **Package Dependencies** – Added `date-fns` package (`^3.0.0`) to support date utilities used in timezone functions. Location: `package.json`
+
+### Technical Details
+- Audio source priority: SoundCloud (`track_id` exists) → MediaTrack (`media` relationship) → LibreTime (`libretimeFilepathRelative`)
+- SoundCloud URL resolution: Uses `episode.soundcloud` (full URL) if available, falls back to `episode.scPermalink`, then constructs from `track_id`
+- MediaTrack authentication: Files are fetched with `credentials: 'include'` to include authentication cookies, then converted to blob URLs for HTML5 audio element playback
+- All episode fetches use `depth=1` parameter to populate relationship fields (especially `media` relationship)
+- Components use `'use client'` directive for client-side rendering in Payload admin
+- Import map generated via `npm run generate:importmap` to register custom components
+
+### Files Modified
+- `src/admin/components/AudioPlayer.tsx` (new)
+- `src/admin/components/AudioPlayerField.tsx` (new)
+- `src/admin/components/FixedAudioPlayer.tsx` (new)
+- `src/admin/components/EventPalette.tsx`
+- `src/admin/components/PlannerViewWithLibreTime.tsx`
+- `src/collections/Episodes.ts`
+- `package.json`
+- `src/app/(payload)/admin/importMap.js` (auto-generated)
+
+### Validation
+- ✅ SoundCloud embed player works in episode admin sidebar and planner view
+- ✅ MediaTrack files load with authentication in production environment
+- ✅ Fixed audio player appears in planner when play button is clicked
+- ✅ Audio player displays appropriate message when no audio source is available
+
+---
+
 ## [2025-11-11] - Payload Production Build Hardening
 
 ### Changed
