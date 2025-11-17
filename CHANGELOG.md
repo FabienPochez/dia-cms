@@ -15,6 +15,9 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [Unreleased]
 
+### Changed
+- **Planner Duration Filter** – Relaxed minimum duration requirements for longer slots (90, 120, 180+ minutes). Only 30 and 60 minute slots now enforce minimum duration checks (≥29min and ≥59min respectively). Longer slots can be manually adjusted/cut in the planner, so episodes like 75-minute or 110-minute shows will now appear in the planner for manual scheduling. Location: `src/admin/hooks/useUnscheduledEpisodes.ts`
+
 ---
 
 ## [2025-11-11] - Payload Production Build Hardening

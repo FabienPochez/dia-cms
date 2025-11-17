@@ -124,20 +124,14 @@ export const useUnscheduledEpisodes = ({
           }
 
           // Step 2: Quality check - actualDuration must be >= (roundedDuration - 1)
-          // Only for specific slots (not for > 180)
+          // Only for 30 and 60 minute slots (longer slots can be manually cut in planner)
           let minRequired: number | null = null
           if (roundedDuration === 30) {
             minRequired = 29
           } else if (roundedDuration === 60) {
             minRequired = 59
-          } else if (roundedDuration === 90) {
-            minRequired = 89
-          } else if (roundedDuration === 120) {
-            minRequired = 119
-          } else if (roundedDuration === 180) {
-            minRequired = 179
           }
-          // For > 180: no quality check
+          // For 90, 120, 180+ minute slots: no quality check (can be manually adjusted)
 
           if (minRequired !== null && actualDurationMinutes < minRequired) {
             console.log(
