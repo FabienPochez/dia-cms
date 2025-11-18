@@ -416,6 +416,17 @@ async function buildFeedItems(
       continue
     }
 
+    // Calculate cue_in_sec for currently playing shows
+    // If show is currently playing (start <= now < end), calculate elapsed time
+    // This helps playout correctly identify that the show should be playing now
+    let cueInSec = 0
+    if (start.getTime() <= nowMs && nowMs < end.getTime()) {
+      // Show is currently playing - calculate how far into it we are
+      const elapsedSec = Math.floor((nowMs - start.getTime()) / 1000)
+      // Clamp to valid range (0 to duration)
+      cueInSec = Math.max(0, Math.min(elapsedSec, durationSec))
+    }
+
     const item: DeterministicFeedItem = {
       id: String(trackId),
       row_id: rowId,
@@ -432,7 +443,7 @@ async function buildFeedItems(
       replay_gain: 0,
       fade_in_ms: 1000,
       fade_out_ms: 1000,
-      cue_in_sec: 0,
+      cue_in_sec: cueInSec,
       cue_out_sec: durationSec,
       track_title: trackTitle,
       artist_name: show?.subtitle || null,

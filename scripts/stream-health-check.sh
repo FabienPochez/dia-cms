@@ -204,6 +204,7 @@ PREV_FEED_VERSION_DELTA=""
 PREV_FEED_MISSING_COUNT=0
 PREV_FEED_TOTAL_COUNT=0
 PREV_FEED_LAST_OK_VERSION=""
+PREV_ICECAST_TITLE=""
 
 if [ -f "$STATE_FILE" ]; then
     PREV_MISMATCH_START=$(jq -r '.mismatch_start // "null"' "$STATE_FILE")
@@ -222,6 +223,7 @@ if [ -f "$STATE_FILE" ]; then
     PREV_FEED_MISSING_COUNT=$(jq -r '.feed_missing_count // 0' "$STATE_FILE")
     PREV_FEED_TOTAL_COUNT=$(jq -r '.feed_total_count // 0' "$STATE_FILE")
     PREV_FEED_LAST_OK_VERSION=$(jq -r '.feed_last_ok_version // ""' "$STATE_FILE")
+    PREV_ICECAST_TITLE=$(jq -r '.icecast_title // ""' "$STATE_FILE")
 fi
 
 FEED_VERSION="$PREV_FEED_VERSION"
@@ -418,9 +420,20 @@ if [ "$ICECAST_BYTES" -gt "$PREV_BYTES" ]; then
     fi
 fi
 
+# Critical title states that should never be suppressed
+ICECAST_TITLE_UPPER=$(echo "$ICECAST_TITLE" | tr '[:lower:]' '[:upper:]')
+CRITICAL_TITLE=false
+if [ "$ICECAST_TITLE_UPPER" = "UNKNOWN" ] || [ "$ICECAST_TITLE_UPPER" = "OFFLINE" ] || [ -z "$ICECAST_TITLE" ] || [ "$ICECAST_TITLE" = "" ]; then
+    CRITICAL_TITLE=true
+    if [ "$PREV_MISMATCH_START" = "null" ] || [ "$ICECAST_TITLE" != "$PREV_ICECAST_TITLE" ]; then
+        log "${RED}🚨 CRITICAL: Icecast title is '${ICECAST_TITLE}' (critical state detected)${NC}"
+    fi
+fi
+PREV_ICECAST_TITLE="$ICECAST_TITLE"
+
 SUPPRESS_RESTART=false
 SUPPRESS_REASON=""
-if [ "$MISMATCH" = true ] && [ "$WITHIN_ALLOWED_SKEW" = true ] && [ "$FEED_FRESH" = true ] && [ "$STABLE_LONGTRACK" = true ]; then
+if [ "$MISMATCH" = true ] && [ "$WITHIN_ALLOWED_SKEW" = true ] && [ "$FEED_FRESH" = true ] && [ "$STABLE_LONGTRACK" = true ] && [ "$CRITICAL_TITLE" = false ]; then
     SUPPRESS_RESTART=true
     SUPPRESS_REASON="stable-longtrack"
 fi
@@ -467,6 +480,11 @@ if [ "$MISMATCH" = true ] || [ "$FROZEN" = true ]; then
         if [ "$FEED_ERROR_ESCALATE" = true ]; then
             SHOULD_RESTART=true
             RESTART_REASON_LIST+=("feed-error")
+        fi
+        # Critical titles (Unknown/Offline) require immediate action after cooldown
+        if [ "$CRITICAL_TITLE" = true ] && [ "$MISMATCH_DURATION" -ge "$ALLOWED_SKEW" ]; then
+            SHOULD_RESTART=true
+            RESTART_REASON_LIST+=("critical-title")
         fi
         if [ "$HARD_SKEW" = true ] && [ "$SUPPRESS_RESTART" = false ]; then
             SHOULD_RESTART=true
@@ -616,6 +634,12 @@ else
     LAST_RESTART_JSON=0
 fi
 
+if [ -n "$ICECAST_TITLE" ]; then
+    ICECAST_TITLE_JSON="\"$ICECAST_TITLE\""
+else
+    ICECAST_TITLE_JSON="\"\""
+fi
+
 cat <<EOF > "$STATE_FILE"
 {
   "mismatch_start": "$MISMATCH_START",
@@ -629,6 +653,7 @@ cat <<EOF > "$STATE_FILE"
   "feed_first_id": $FEED_FIRST_ID_JSON,
   "schedule_key": $SCHEDULE_KEY_JSON,
   "last_restart_ts": $LAST_RESTART_JSON,
+  "icecast_title": $ICECAST_TITLE_JSON,
   "feed_status_header": $FEED_STATUS_HEADER_JSON,
   "feed_status_body": $FEED_STATUS_BODY_JSON,
   "feed_age_sec": $FEED_AGE_JSON,
@@ -637,3 +662,4 @@ cat <<EOF > "$STATE_FILE"
   "feed_total_count": $FEED_TOTAL_COUNT_JSON,
   "feed_last_ok_version": $FEED_LAST_OK_VERSION_JSON
 }
+EOF

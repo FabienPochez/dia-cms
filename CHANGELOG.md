@@ -20,6 +20,18 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-18] - Stream Health Check & Deterministic Feed Fixes
+
+### Fixed
+- **Stream Health Check Loop Prevention** – Fixed infinite restart loop when stream shows "Unknown" title. Health check now treats "Unknown" and "OFFLINE" titles as critical states that cannot be suppressed by stable-longtrack logic. Added "critical-title" as a restart reason that triggers after cooldown period. Location: `scripts/stream-health-check.sh`
+- **Deterministic Feed Cue-In Calculation** – Fixed LibreTime playout timing bug for long-running shows (>55 minutes). Deterministic feed now calculates `cue_in_sec` for currently playing shows based on elapsed time, helping playout correctly identify that a show is currently active rather than waiting for the next scheduled item. Previously, feed always set `cue_in_sec: 0`, causing playout to miscalculate timing for shows already in progress. Location: `src/lib/schedule/deterministicFeed.ts`
+
+### Changed
+- **Stream Health Check State Tracking** – Added `icecast_title` to state file for comparison and better detection of critical title states. Improved logging when critical titles are detected. Location: `scripts/stream-health-check.sh`
+- **Stream Health Check Documentation** – Updated README to document the deterministic feed mitigation approach and clarify that the underlying LibreTime bug may still cause issues in edge cases. Location: `README.md`
+
+---
+
 ## [2025-11-17] - Planner UI Enhancements
 
 ### Added

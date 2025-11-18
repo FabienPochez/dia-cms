@@ -1388,7 +1388,11 @@ cat /tmp/stream-health-state.json | jq
 - Full audit trail of all checks and restarts
 - Lock file prevents overlapping runs
 
-**Context**: LibreTime playout service has a timing detection bug where it fails to recognize that "now" falls within a scheduled show window, particularly at hourly boundaries. This causes the stream to go silent despite the UI showing "ON AIR". The health check detects this stuck state and automatically restarts the services. See `/srv/payload/docs/STREAM_HEALTH_MONITORING.md` for detailed analysis.
+**Context**: LibreTime playout service has a timing detection bug where it fails to recognize that "now" falls within a scheduled show window, particularly for long-running shows (>55 minutes). This causes the stream to go silent despite the UI showing "ON AIR". 
+
+**Mitigation**: The deterministic feed now calculates `cue_in_sec` for currently playing shows, providing playout with the correct playback position. This helps playout correctly identify that a show is currently active rather than waiting for the next scheduled item. However, the underlying LibreTime bug may still cause issues in edge cases.
+
+**Recovery**: The health check detects this stuck state and automatically restarts the services. See `/srv/payload/docs/STREAM_HEALTH_MONITORING.md` for detailed analysis.
 
 #### Weekly Archive Structure
 Episodes are archived to weekly buckets based on their air date in Europe/Paris timezone:
