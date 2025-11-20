@@ -416,16 +416,13 @@ async function buildFeedItems(
       continue
     }
 
-    // Calculate cue_in_sec for currently playing shows
-    // If show is currently playing (start <= now < end), calculate elapsed time
-    // This helps playout correctly identify that the show should be playing now
-    let cueInSec = 0
-    if (start.getTime() <= nowMs && nowMs < end.getTime()) {
-      // Show is currently playing - calculate how far into it we are
-      const elapsedSec = Math.floor((nowMs - start.getTime()) / 1000)
-      // Clamp to valid range (0 to duration)
-      cueInSec = Math.max(0, Math.min(elapsedSec, durationSec))
-    }
+    // Always set cue_in_sec to 0 to prevent Liquidsoap from restarting files
+    // when feed updates during playback. Changing cue_in_sec for currently playing
+    // shows causes Liquidsoap to restart the file from the new cue_in position,
+    // leading to early cue-outs and playback interruptions.
+    // The start_utc/end_utc timestamps are sufficient for playout to identify
+    // which show should be playing now.
+    const cueInSec = 0
 
     const item: DeterministicFeedItem = {
       id: String(trackId),

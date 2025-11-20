@@ -20,6 +20,28 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-20] - Deterministic Feed Early Cue-Out Fix
+
+### Fixed
+- **Early Show Cue-Out Bug** – Fixed issue where shows would restart 3 minutes early when deterministic feed updated during playback. The feed was recalculating `cue_in_sec` based on elapsed time for currently playing shows, causing Liquidsoap to restart files from the new cue-in position. Now `cue_in_sec` is always set to 0 to prevent restarts during playback. The `start_utc`/`end_utc` timestamps are sufficient for playout to identify which show should be playing. Location: `src/lib/schedule/deterministicFeed.ts`
+- **Bug documented in BUGLOG.md** – Added detailed investigation notes for the early cue-out issue observed on 2025-11-20 during LEFEU show. Location: `docs/BUGLOG.md`
+
+---
+
+## [2025-11-19] - Icecast Security Fix & Livestream Infrastructure
+
+### Security
+- **Icecast Port Binding** – Secured Icecast by binding port 8000 to localhost only (`127.0.0.1:8000`) instead of all interfaces (`0.0.0.0:8000`). This prevents direct internet access to Icecast while maintaining Nginx proxy functionality. Icecast is now only accessible from the host (where Nginx runs), blocking external connections while the stream continues to work through `https://livestream.diaradio.live/main`. Location: `/srv/libretime/docker-compose.yml`
+
+### Added
+- **Livestream Subdomain** – Created dedicated Nginx vhost for `livestream.diaradio.live` to serve the live stream endpoint. New subdomain uses DNS-only (no Cloudflare proxy) for lower latency and includes optimized streaming configuration (buffering off, 3600s timeouts, CORS headers, chunked transfer). SSL certificate obtained via Let's Encrypt. Location: `/etc/nginx/sites-available/livestream.diaradio.live`
+- **Livestream Log Rotation** – Configured logrotate for livestream access and error logs with daily rotation, 7-day retention, and compression. Prevents log files from growing unbounded on the 24/7 stream endpoint. Location: `/etc/logrotate.d/nginx-livestream`
+
+### Removed
+- **Old Stream Endpoint** – Removed `/main` streaming proxy from `schedule.diaradio.live` vhost. The endpoint now returns 404, directing users to the new dedicated stream subdomain at `https://livestream.diaradio.live/main`. All LibreTime admin paths (`/`, `/8001/`, `/8002/`) remain unchanged. Location: `/etc/nginx/sites-available/schedule.diaradio.live`
+
+---
+
 ## [2025-11-18] - Stream Health Check & Deterministic Feed Fixes
 
 ### Fixed
