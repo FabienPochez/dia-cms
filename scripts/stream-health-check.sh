@@ -18,6 +18,7 @@ FEED_STALE_THRESHOLD=${FEED_STALE_THRESHOLD:-600}
 LONGTRACK_SKEW_PCT=${LONGTRACK_SKEW_PCT:-0.10}
 LONGTRACK_SKEW_MIN=${LONGTRACK_SKEW_MIN:-600}
 LONGTRACK_SKEW_MAX=${LONGTRACK_SKEW_MAX:-1200}
+END_TIME_VIOLATION_THRESHOLD=${END_TIME_VIOLATION_THRESHOLD:-60}
 RESTART_COOLDOWN_MIN=${RESTART_COOLDOWN_MIN:-10}
 RESTART_COOLDOWN_SEC=$((RESTART_COOLDOWN_MIN * 60))
 WATCHDOG_STRICT=${WATCHDOG_STRICT:-false}
@@ -128,6 +129,7 @@ check_deterministic_feed() {
     FEED_LAST_OK_VERSION=$(echo "$feed_response" | jq -r '.last_ok_version // empty')
     FEED_GENERATED_AT=$(echo "$feed_response" | jq -r '.generatedAt_utc // empty')
     FEED_FIRST_START=$(echo "$feed_response" | jq -r '.items[0].start_utc // empty')
+    FEED_FIRST_END=$(echo "$feed_response" | jq -r '.items[0].end_utc // empty')
     FEED_FIRST_ID=$(echo "$feed_response" | jq -r '.items[0].id // .items[0].instance_id // empty')
     FEED_FIRST_TITLE=$(echo "$feed_response" | jq -r '.items[0].title // .items[0].show_title // .items[0].show_name // .items[0].show_slug // empty')
     FEED_FIRST_DURATION=$(echo "$feed_response" | jq -r '.items[0].duration_sec // 0')
@@ -156,6 +158,11 @@ check_deterministic_feed() {
             FEED_EXPECTED_POS=$(( now_ts - first_start_ts ))
             log "Feed check: version=$version now_utc=$now_utc first_start=$FEED_FIRST_START |Δ|=${FEED_DELTA_SEC#-}s"
         fi
+    fi
+
+    FEED_FIRST_END_TS=""
+    if [ -n "$FEED_FIRST_END" ]; then
+        FEED_FIRST_END_TS=$(date -u -d "${FEED_FIRST_END}Z" +%s 2>/dev/null || echo "")
     fi
 
     if [ -n "$FEED_GENERATED_AT" ]; then
@@ -194,6 +201,8 @@ PREV_FEED_VERSION="null"
 PREV_FEED_VERSION_TS="0"
 PREV_FEED_STALE_LOGGED="false"
 PREV_FEED_FIRST_START=""
+PREV_FEED_FIRST_END=""
+PREV_FEED_FIRST_END_TS=""
 PREV_SCHEDULE_KEY=""
 PREV_FEED_FIRST_ID=""
 PREV_LAST_RESTART_TS="0"
@@ -213,6 +222,8 @@ if [ -f "$STATE_FILE" ]; then
     PREV_FEED_VERSION_TS=$(jq -r '.feed_version_seen_at // "0"' "$STATE_FILE")
     PREV_FEED_STALE_LOGGED=$(jq -r '.feed_stale_logged // "false"' "$STATE_FILE")
     PREV_FEED_FIRST_START=$(jq -r '.feed_first_start // ""' "$STATE_FILE")
+    PREV_FEED_FIRST_END=$(jq -r '.feed_first_end // ""' "$STATE_FILE")
+    PREV_FEED_FIRST_END_TS=$(jq -r '.feed_first_end_ts // ""' "$STATE_FILE")
     PREV_SCHEDULE_KEY=$(jq -r '.schedule_key // ""' "$STATE_FILE")
     PREV_FEED_FIRST_ID=$(jq -r '.feed_first_id // ""' "$STATE_FILE")
     PREV_LAST_RESTART_TS=$(jq -r '.last_restart_ts // "0"' "$STATE_FILE")
@@ -230,6 +241,8 @@ FEED_VERSION="$PREV_FEED_VERSION"
 FEED_VERSION_TS="$PREV_FEED_VERSION_TS"
 FEED_STALE_LOGGED="$PREV_FEED_STALE_LOGGED"
 FEED_FIRST_START="$PREV_FEED_FIRST_START"
+FEED_FIRST_END="$PREV_FEED_FIRST_END"
+FEED_FIRST_END_TS="$PREV_FEED_FIRST_END_TS"
 FEED_FIRST_ID="$PREV_FEED_FIRST_ID"
 FEED_FIRST_TITLE=""
 FEED_FIRST_DURATION=""
@@ -420,6 +433,17 @@ if [ "$ICECAST_BYTES" -gt "$PREV_BYTES" ]; then
     fi
 fi
 
+# Check if current show has exceeded its scheduled end time
+SHOW_EXCEEDED_END_TIME=false
+SHOW_EXCEEDED_SEC=0
+if [ -n "$FEED_FIRST_END_TS" ] && [[ "$FEED_FIRST_END_TS" =~ ^[0-9]+$ ]] && [ "$NOW_TS" -gt "$FEED_FIRST_END_TS" ]; then
+    SHOW_EXCEEDED_END_TIME=true
+    SHOW_EXCEEDED_SEC=$(( NOW_TS - FEED_FIRST_END_TS ))
+    if [ "$SHOW_EXCEEDED_SEC" -gt 60 ]; then
+        log "${YELLOW}⚠️  Show exceeded end time: end=$FEED_FIRST_END exceeded_by=${SHOW_EXCEEDED_SEC}s${NC}"
+    fi
+fi
+
 # Critical title states that should never be suppressed
 ICECAST_TITLE_UPPER=$(echo "$ICECAST_TITLE" | tr '[:lower:]' '[:upper:]')
 CRITICAL_TITLE=false
@@ -433,7 +457,8 @@ PREV_ICECAST_TITLE="$ICECAST_TITLE"
 
 SUPPRESS_RESTART=false
 SUPPRESS_REASON=""
-if [ "$MISMATCH" = true ] && [ "$WITHIN_ALLOWED_SKEW" = true ] && [ "$FEED_FRESH" = true ] && [ "$STABLE_LONGTRACK" = true ] && [ "$CRITICAL_TITLE" = false ]; then
+# Don't suppress if show has exceeded its scheduled end time (even if it's a stable long track)
+if [ "$MISMATCH" = true ] && [ "$WITHIN_ALLOWED_SKEW" = true ] && [ "$FEED_FRESH" = true ] && [ "$STABLE_LONGTRACK" = true ] && [ "$CRITICAL_TITLE" = false ] && [ "$SHOW_EXCEEDED_END_TIME" = false ]; then
     SUPPRESS_RESTART=true
     SUPPRESS_REASON="stable-longtrack"
 fi
@@ -485,6 +510,12 @@ if [ "$MISMATCH" = true ] || [ "$FROZEN" = true ]; then
         if [ "$CRITICAL_TITLE" = true ] && [ "$MISMATCH_DURATION" -ge "$ALLOWED_SKEW" ]; then
             SHOULD_RESTART=true
             RESTART_REASON_LIST+=("critical-title")
+        fi
+        # Show exceeded scheduled end time - force restart to switch to next show
+        # Use a much shorter threshold (END_TIME_VIOLATION_THRESHOLD) since deterministic feed must keep schedule on time
+        if [ "$SHOW_EXCEEDED_END_TIME" = true ] && [ "$MISMATCH" = true ] && [ "$SHOW_EXCEEDED_SEC" -ge "$END_TIME_VIOLATION_THRESHOLD" ]; then
+            SHOULD_RESTART=true
+            RESTART_REASON_LIST+=("show-exceeded-end-time")
         fi
         if [ "$HARD_SKEW" = true ] && [ "$SUPPRESS_RESTART" = false ]; then
             SHOULD_RESTART=true
@@ -577,6 +608,18 @@ else
     FEED_FIRST_START_JSON=null
 fi
 
+if [ -n "$FEED_FIRST_END" ]; then
+    FEED_FIRST_END_JSON="\"$FEED_FIRST_END\""
+else
+    FEED_FIRST_END_JSON=null
+fi
+
+if [ -n "$FEED_FIRST_END_TS" ] && [[ "$FEED_FIRST_END_TS" =~ ^[0-9]+$ ]]; then
+    FEED_FIRST_END_TS_JSON=$FEED_FIRST_END_TS
+else
+    FEED_FIRST_END_TS_JSON=null
+fi
+
 if [ -n "$FEED_DELTA_SEC" ]; then
     FEED_DELTA_JSON=$FEED_DELTA_SEC
 else
@@ -649,6 +692,8 @@ cat <<EOF > "$STATE_FILE"
   "feed_version_seen_at": $FEED_VERSION_TS_JSON,
   "feed_stale_logged": $FEED_STALE_LOGGED_JSON,
   "feed_first_start": $FEED_FIRST_START_JSON,
+  "feed_first_end": $FEED_FIRST_END_JSON,
+  "feed_first_end_ts": $FEED_FIRST_END_TS_JSON,
   "feed_delta_sec": $FEED_DELTA_JSON,
   "feed_first_id": $FEED_FIRST_ID_JSON,
   "schedule_key": $SCHEDULE_KEY_JSON,

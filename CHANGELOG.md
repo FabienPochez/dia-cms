@@ -20,6 +20,40 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-21] - Stream Health Check End Time Detection
+
+### Added
+- **Show End Time Detection** – Stream health check now detects when shows exceed their scheduled end time and triggers restarts to switch to the next scheduled show. This prevents situations where a show continues playing past its scheduled end time (e.g., "Les Argonautes" playing 13+ minutes past 09:00 when "Gros Volume sur la Molle" should have started at 08:00). Location: `scripts/stream-health-check.sh`
+  - Parses `end_utc` from deterministic feed (`items[0].end_utc`)
+  - Compares current time with scheduled end time
+  - Uses a short threshold (`END_TIME_VIOLATION_THRESHOLD`, default 60 seconds) to ensure deterministic feed keeps schedule on time
+  - Prevents suppression of restarts when show exceeds end time (even for "stable-longtrack" scenarios)
+  - Adds specific restart reason `show-exceeded-end-time` to logs for clarity
+  - Stores end time data in state file for persistence
+  - Configurable via `END_TIME_VIOLATION_THRESHOLD` environment variable (default: 60 seconds)
+
+### Fixed
+- **Stream Desync After Long Shows** – Fixed issue where shows scheduled at midnight (4-hour shows) could cause timing confusion in LibreTime, leading to shows not transitioning properly at scheduled boundaries. The health check now properly detects and responds to shows that exceed their scheduled end time, forcing a restart to reload the schedule and switch to the correct show.
+
+---
+
+## [2025-11-20] - Large File Import Support & Infrastructure Improvements
+
+### Fixed
+- **Large File Import Limit** – Increased LibreTime upload limits to support archive files up to 1GB
+  - **LibreTime nginx**: Increased `client_max_body_size` from 512M to 1G via custom config mount
+  - **PHP legacy container**: Increased `upload_max_filesize` and `post_max_size` from 512M to 1G via custom config mount
+  - Both configurations are persistent via mounted config files in docker-compose.yml
+  - Location: `/srv/libretime/nginx-custom/default.conf` and `/srv/libretime/php-custom/uploads.ini`
+  - Resolves 413 Request Entity Too Large errors for archive files >512MB (e.g., 549MB episode files)
+
+### Infrastructure
+- **LibreTime nginx custom config**: Created `/srv/libretime/nginx-custom/default.conf` with increased upload limits
+- **LibreTime PHP custom config**: Created `/srv/libretime/php-custom/uploads.ini` with increased upload limits
+- Both configs mounted in `docker-compose.yml` for persistence across container restarts
+
+---
+
 ## [2025-11-20] - Deterministic Feed Early Cue-Out Fix
 
 ### Fixed
