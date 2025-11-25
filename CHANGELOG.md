@@ -20,6 +20,34 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-25] - Deterministic Feed Schedule Delta & Suppression Fixes
+
+### Fixed
+- **Large Schedule Delta During Long Shows** – Fixed issue where LibreTime would apply schedule updates during long shows (2+ hours), causing audible interruptions and queue rebuilds mid-playback. The system now skips schedule application when the correct show is already playing, using strict `row_id` comparison and time window validation. This prevents unnecessary queue rebuilds during long shows while still applying schedule changes when shows actually change. Location: `/srv/libretime/patches/player/fetch.py`
+  - Uses strict `row_id` comparison (not titles/durations) to identify if same show is playing
+  - Checks time window: `first_start <= now_utc <= first_end`
+  - Skips schedule application completely when correct show is already playing
+  - Added per-show logging cooldown (logs once per show or every 60 seconds) to prevent log spam
+
+- **Shows Not Starting On Time Due to Suppression Logic** – Fixed issue where shows would not start at their scheduled time because health check suppressed restarts when feed schedule changed. The system now detects schedule changes and prevents suppression when a new show should have started. Location: `scripts/stream-health-check.sh`
+  - Detects schedule changes by comparing `FEED_FIRST_START` and `FEED_FIRST_ID` with previous values
+  - Added 45-second grace period before triggering restart on schedule change
+  - Updated suppression logic to exclude schedule changes (does not suppress when schedule change is active)
+  - Added end-time override: if show exceeded end time by >60s, overrides ALL suppressions
+  - Added new restart reason: `schedule-changed` triggers when feed schedule changed, grace period passed, and mismatch detected
+
+### Changed
+- **Watchdog Restart Triggers Simplified** – Simplified restart logic to only essential triggers and constrained hard-skew to be extremely strict. Location: `scripts/stream-health-check.sh`
+  - Removed `feed-error` as restart reason (kept as monitoring-only)
+  - Hard-skew now only triggers when ALL conditions are met:
+    - `PLAYER_SKEW_ABS > 900` (15 minutes, not 10)
+    - `STABLE_LONGTRACK == false` (not a long-track case)
+    - `now_utc > first_end_utc + 300` (5 minutes after show end)
+  - This makes hard-skew a "safety valve" for truly broken states only
+  - Restart reasons now limited to: `bytes-stalled`, `critical-title`, `show-exceeded-end-time`, `schedule-changed`, and `hard-skew` (extremely constrained)
+
+---
+
 ## [2025-11-25] - Upload Form Fixes & HEIC/HEIF Support
 
 ### Fixed

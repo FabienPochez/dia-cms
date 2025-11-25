@@ -271,6 +271,30 @@ fi
 
 check_deterministic_feed || true
 
+# Detect schedule changes (A2)
+FEED_SCHEDULE_CHANGED=false
+SCHEDULE_CHANGE_ACTIVE=false
+SCHEDULE_CHANGE_GRACE_SEC=45
+
+if [ -n "$FEED_FIRST_START" ] && [ -n "$PREV_FEED_FIRST_START" ]; then
+    if [ "$FEED_FIRST_START" != "$PREV_FEED_FIRST_START" ] || [ "$FEED_FIRST_ID" != "$PREV_FEED_FIRST_ID" ]; then
+        FEED_SCHEDULE_CHANGED=true
+        log "Feed schedule changed: first_start=${PREV_FEED_FIRST_START}→${FEED_FIRST_START} first_id=${PREV_FEED_FIRST_ID}→${FEED_FIRST_ID}"
+        
+        # Check if grace period has passed
+        if [ -n "$FEED_FIRST_START" ]; then
+            local new_first_start_ts
+            new_first_start_ts=$(date -u -d "${FEED_FIRST_START}Z" +%s 2>/dev/null || echo "")
+            if [ -n "$new_first_start_ts" ] && [[ "$new_first_start_ts" =~ ^[0-9]+$ ]]; then
+                local grace_threshold=$(( new_first_start_ts + SCHEDULE_CHANGE_GRACE_SEC ))
+                if [ "$NOW_TS" -ge "$grace_threshold" ]; then
+                    SCHEDULE_CHANGE_ACTIVE=true
+                fi
+            fi
+        fi
+    fi
+fi
+
 FEED_STATUS_EFFECTIVE="$FEED_STATUS_HEADER"
 [ -z "$FEED_STATUS_EFFECTIVE" ] || [ "$FEED_STATUS_EFFECTIVE" = "unknown" ] && FEED_STATUS_EFFECTIVE="$FEED_STATUS_BODY"
 FEED_STATUS_EFFECTIVE=$(echo "$FEED_STATUS_EFFECTIVE" | tr '[:upper:]' '[:lower:]')
@@ -436,10 +460,15 @@ fi
 # Check if current show has exceeded its scheduled end time
 SHOW_EXCEEDED_END_TIME=false
 SHOW_EXCEEDED_SEC=0
+SHOW_BOUNDARY_CROSSED=false
 if [ -n "$FEED_FIRST_END_TS" ] && [[ "$FEED_FIRST_END_TS" =~ ^[0-9]+$ ]] && [ "$NOW_TS" -gt "$FEED_FIRST_END_TS" ]; then
     SHOW_EXCEEDED_END_TIME=true
     SHOW_EXCEEDED_SEC=$(( NOW_TS - FEED_FIRST_END_TS ))
+    # End time override: if show exceeded end by more than 60s, override all suppressions
     if [ "$SHOW_EXCEEDED_SEC" -gt 60 ]; then
+        SHOW_BOUNDARY_CROSSED=true
+        log "${YELLOW}⚠️  Show boundary crossed: end=$FEED_FIRST_END exceeded_by=${SHOW_EXCEEDED_SEC}s (overriding suppressions)${NC}"
+    elif [ "$SHOW_EXCEEDED_SEC" -gt 0 ]; then
         log "${YELLOW}⚠️  Show exceeded end time: end=$FEED_FIRST_END exceeded_by=${SHOW_EXCEEDED_SEC}s${NC}"
     fi
 fi
@@ -457,12 +486,17 @@ PREV_ICECAST_TITLE="$ICECAST_TITLE"
 
 SUPPRESS_RESTART=false
 SUPPRESS_REASON=""
-# Don't suppress if show has exceeded its scheduled end time (even if it's a stable long track)
-if [ "$MISMATCH" = true ] && [ "$WITHIN_ALLOWED_SKEW" = true ] && [ "$FEED_FRESH" = true ] && [ "$STABLE_LONGTRACK" = true ] && [ "$CRITICAL_TITLE" = false ] && [ "$SHOW_EXCEEDED_END_TIME" = false ]; then
-    SUPPRESS_RESTART=true
-    SUPPRESS_REASON="stable-longtrack"
+# Don't suppress if:
+# - Show has exceeded its scheduled end time (even if it's a stable long track)
+# - Show boundary crossed (end + 60s) - override all suppressions
+# - Schedule change is active (new show should have started)
+if [ "$SHOW_BOUNDARY_CROSSED" != true ] && [ "$SCHEDULE_CHANGE_ACTIVE" != true ]; then
+    if [ "$MISMATCH" = true ] && [ "$WITHIN_ALLOWED_SKEW" = true ] && [ "$FEED_FRESH" = true ] && [ "$STABLE_LONGTRACK" = true ] && [ "$CRITICAL_TITLE" = false ] && [ "$SHOW_EXCEEDED_END_TIME" = false ]; then
+        SUPPRESS_RESTART=true
+        SUPPRESS_REASON="stable-longtrack"
+    fi
 fi
-if [ "$COOLDOWN_ACTIVE" = true ]; then
+if [ "$COOLDOWN_ACTIVE" = true ] && [ "$SHOW_BOUNDARY_CROSSED" != true ]; then
     SUPPRESS_RESTART=true
     SUPPRESS_REASON=${SUPPRESS_REASON:+$SUPPRESS_REASON,}"cooldown"
 fi
@@ -489,11 +523,15 @@ if [ "$MISMATCH" = true ] || [ "$FROZEN" = true ]; then
             FEED_ERROR_ESCALATE=true
         fi
 
+        # Hard-skew: EXTREMELY constrained - only trigger if ALL conditions are met:
+        # - PLAYER_SKEW_ABS > 900 (15 minutes)
+        # - STABLE_LONGTRACK == false (not a long-track case)
+        # - now_utc > first_end_utc + 300 (5 minutes after show end)
         HARD_SKEW=false
-        if [ -n "$PLAYER_SKEW_ABS" ] && [ "$PLAYER_SKEW_ABS" -gt "$ALLOWED_SKEW" ]; then
-            HARD_SKEW=true
-        elif [ "$WITHIN_ALLOWED_SKEW" = false ] && [ "$MISMATCH_DURATION" -ge "$ALLOWED_SKEW" ]; then
-            HARD_SKEW=true
+        if [ -n "$PLAYER_SKEW_ABS" ] && [ "$PLAYER_SKEW_ABS" -gt 900 ] && [ "$STABLE_LONGTRACK" = false ]; then
+            if [ -n "$FEED_FIRST_END_TS" ] && [[ "$FEED_FIRST_END_TS" =~ ^[0-9]+$ ]] && [ "$NOW_TS" -gt $((FEED_FIRST_END_TS + 300)) ]; then
+                HARD_SKEW=true
+            fi
         fi
 
         SHOULD_RESTART=false
@@ -502,10 +540,8 @@ if [ "$MISMATCH" = true ] || [ "$FROZEN" = true ]; then
             SHOULD_RESTART=true
             RESTART_REASON_LIST+=("bytes-stalled")
         fi
-        if [ "$FEED_ERROR_ESCALATE" = true ]; then
-            SHOULD_RESTART=true
-            RESTART_REASON_LIST+=("feed-error")
-        fi
+        # feed-error removed as restart reason (kept as monitoring-only)
+        # Feed errors are logged but don't trigger restarts to simplify watchdog logic
         # Critical titles (Unknown/Offline) require immediate action after cooldown
         if [ "$CRITICAL_TITLE" = true ] && [ "$MISMATCH_DURATION" -ge "$ALLOWED_SKEW" ]; then
             SHOULD_RESTART=true
@@ -516,6 +552,11 @@ if [ "$MISMATCH" = true ] || [ "$FROZEN" = true ]; then
         if [ "$SHOW_EXCEEDED_END_TIME" = true ] && [ "$MISMATCH" = true ] && [ "$SHOW_EXCEEDED_SEC" -ge "$END_TIME_VIOLATION_THRESHOLD" ]; then
             SHOULD_RESTART=true
             RESTART_REASON_LIST+=("show-exceeded-end-time")
+        fi
+        # Schedule changed - new show should have started
+        if [ "$FEED_SCHEDULE_CHANGED" = true ] && [ "$SCHEDULE_CHANGE_ACTIVE" = true ] && [ "$MISMATCH" = true ]; then
+            SHOULD_RESTART=true
+            RESTART_REASON_LIST+=("schedule-changed")
         fi
         if [ "$HARD_SKEW" = true ] && [ "$SUPPRESS_RESTART" = false ]; then
             SHOULD_RESTART=true
