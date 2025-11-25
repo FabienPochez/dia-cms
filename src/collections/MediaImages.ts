@@ -79,12 +79,47 @@ export const MediaImages: CollectionConfig = {
                   // Get file buffer
                   const fileBuffer = req.file.data
                   
-                  // Initialize Sharp instance
-                  let sharpInstance = sharp(fileBuffer)
+                  // Check if file is HEIC/HEIF format (common on iPhones/Macs)
+                  const mimeType = req.file.mimetype || ''
+                  const isHeic = mimeType.includes('heic') || mimeType.includes('heif')
                   
-                  // Get metadata to check dimensions
-                  const metadata = await sharpInstance.metadata()
-                  console.log(`[MediaImages] Original dimensions: ${metadata.width}x${metadata.height}`)
+                  // Initialize Sharp instance - for HEIC, convert to JPEG immediately
+                  let sharpInstance = isHeic ? sharp(fileBuffer).jpeg() : sharp(fileBuffer)
+                  
+                  // Get metadata to check dimensions (with error handling for unsupported formats)
+                  let metadata
+                  try {
+                    metadata = await sharpInstance.metadata()
+                    if (isHeic) {
+                      console.log(`[MediaImages] HEIC/HEIF converted to JPEG - dimensions: ${metadata.width}x${metadata.height}`)
+                    } else {
+                      console.log(`[MediaImages] Original dimensions: ${metadata.width}x${metadata.height}`)
+                    }
+                  } catch (metaError: any) {
+                    // If metadata extraction fails, check if it's a HEIC codec issue
+                    if (metaError.message?.includes('heif') || metaError.message?.includes('codec') || metaError.message?.includes('bad seek')) {
+                      console.warn('[MediaImages] HEIC/HEIF codec issue detected - attempting direct JPEG conversion...')
+                      try {
+                        // Try to convert HEIC directly to JPEG (bypass metadata step)
+                        sharpInstance = sharp(fileBuffer).jpeg()
+                        // Force conversion by getting buffer (this will trigger the conversion)
+                        const testBuffer = await sharpInstance.toBuffer({ resolveWithObject: true })
+                        metadata = testBuffer.info
+                        console.log(`[MediaImages] Successfully converted HEIC to JPEG: ${metadata.width}x${metadata.height}`)
+                        // Reset instance for processing below
+                        sharpInstance = sharp(fileBuffer).jpeg()
+                      } catch (convertError: any) {
+                        // If conversion also fails, reject with helpful error message
+                        console.error('[MediaImages] Failed to process HEIC/HEIF image:', convertError.message)
+                        throw new Error(
+                          'HEIC/HEIF image format is not fully supported by the server. Please convert your image to JPEG or PNG before uploading. ' +
+                          'You can do this by opening the image on your device and saving/exporting it as JPEG.'
+                        )
+                      }
+                    } else {
+                      throw metaError
+                    }
+                  }
                   
                   // Check if resize is needed (only if dimension > 1500px)
                   if (metadata.width && metadata.height && (metadata.width > 1500 || metadata.height > 1500)) {

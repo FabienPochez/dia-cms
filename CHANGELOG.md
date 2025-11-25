@@ -20,6 +20,25 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-25] - Upload Form Fixes & HEIC/HEIF Support
+
+### Fixed
+- **Upload Timeout Errors (408)** – Increased nginx timeout settings for upload subdomain from 300s to 600s (10 minutes) to support large audio file uploads. Prevents 408 Request Timeout errors for users with slower connections or large files. Location: `/etc/nginx/sites-available/upload.content.diaradio.live`
+  - `client_body_timeout`: 300s → 600s
+  - `proxy_read_timeout`: 300s → 600s
+  - `proxy_connect_timeout`: 300s → 600s
+  - `proxy_send_timeout`: 300s → 600s
+- **Audio File Thumbnail Generation Errors** – Removed `adminThumbnail` setting from MediaTracks collection to prevent Sharp from attempting to generate thumbnails from audio files, which caused "bad seek" errors during upload processing. Audio files no longer trigger image processing. Location: `src/collections/MediaTracks.ts`
+- **Duplicate Filename Errors** – Added automatic cleanup of duplicate media-track records before creating new uploads. When a media-track with the same filename exists (from previous failed uploads), the system now deletes the old record before creating a new one. Falls back to timestamped filename if deletion fails. Prevents "Value must be unique" errors on retry uploads. Location: `src/collections/MediaTracks.ts`
+
+### Added
+- **HEIC/HEIF Image Format Support** – Added support for HEIC/HEIF cover images (common on iPhones/Macs). Images are automatically converted to JPEG during upload and compressed. Added `libheif` and `libde265` libraries to Docker containers for Sharp HEIC support. If conversion fails due to unsupported codec, upload is rejected with a helpful error message asking users to convert images manually. Location: `src/collections/MediaImages.ts`, `docker-compose.yml`
+  - Libraries installed: `libheif libde265` in all Payload containers (payload, payload-dev, payload-build)
+  - Automatic JPEG conversion for HEIC/HEIF files
+  - Graceful error handling with user-friendly messages
+
+---
+
 ## [2025-11-21] - Stream Health Check End Time Detection
 
 ### Added

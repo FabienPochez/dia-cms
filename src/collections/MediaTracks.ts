@@ -30,7 +30,7 @@ export const MediaTracks: CollectionConfig = {
       'audio/mp4',
     ],
     imageSizes: [],
-    adminThumbnail: 'thumbnail',
+    // No thumbnail generation for audio files (causes Sharp errors)
     // Allow large file uploads (up to 500MB)
     filesRequiredOnCreate: false,
   },
@@ -141,12 +141,65 @@ export const MediaTracks: CollectionConfig = {
                   // Generate canonical filename with sanitized original name
                   const mimeType = req.file.mimetype || 'audio/mpeg'
                   const originalFilename = req.file.originalname || data.filename || 'audio'
-                  const filename = buildEpisodeFilename(episode, mimeType, originalFilename, 120)
+                  let filename = buildEpisodeFilename(episode, mimeType, originalFilename, 120)
 
                   console.log(`[MediaTracks] Original filename: ${originalFilename}`)
                   console.log(
                     `[MediaTracks] Generated filename for episode ${episodeId}: ${filename}`,
                   )
+
+                  // Check if a media-track with this filename already exists (from previous failed upload)
+                  try {
+                    const existingTracks = await req.payload.find({
+                      collection: 'media-tracks',
+                      where: {
+                        filename: {
+                          equals: filename,
+                        },
+                      },
+                      limit: 1,
+                    })
+
+                    if (existingTracks.docs.length > 0) {
+                      const existingTrack = existingTracks.docs[0]
+                      console.warn(
+                        `[MediaTracks] Found existing media-track with same filename: ${filename} (ID: ${existingTrack.id})`,
+                      )
+                      
+                      // Check if it's linked to the same episode
+                      if (episode.media && String(episode.media) === existingTrack.id) {
+                        console.log(
+                          `[MediaTracks] Existing track is linked to this episode - will be replaced by new upload`,
+                        )
+                      }
+                      
+                      // Delete the old media-track to allow the new upload
+                      try {
+                        await req.payload.delete({
+                          collection: 'media-tracks',
+                          id: existingTrack.id,
+                        })
+                        console.log(`[MediaTracks] Deleted old media-track: ${existingTrack.id}`)
+                      } catch (deleteError) {
+                        console.error(
+                          `[MediaTracks] Failed to delete old media-track: ${deleteError}`,
+                        )
+                        // If deletion fails, add timestamp to filename to make it unique
+                        const timestamp = Date.now()
+                        const ext = path.extname(filename)
+                        const base = filename.replace(ext, '')
+                        filename = `${base}-${timestamp}${ext}`
+                        console.log(
+                          `[MediaTracks] Added timestamp to filename to avoid conflict: ${filename}`,
+                        )
+                      }
+                    }
+                  } catch (checkError) {
+                    console.warn(
+                      `[MediaTracks] Error checking for existing tracks: ${checkError}`,
+                    )
+                    // Continue with original filename
+                  }
 
                   // Store original filename in req.context for afterChange hook
                   if (!req.context) req.context = {}
@@ -225,5 +278,8 @@ export const MediaTracks: CollectionConfig = {
         return doc
       },
     ],
+    // Disable image processing for audio files to prevent Sharp errors
+    // This prevents Payload from trying to process audio files as images
+    disableLocalStorage: false,
   },
 }
