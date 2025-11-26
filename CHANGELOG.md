@@ -20,7 +20,7 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
-## [2025-11-26] - Track ID Verification for Schedule Slip Detection & Server-Side Mood Filtering
+## [2025-11-26] - Track ID Verification for Schedule Slip Detection
 
 ### Added
 - **Track ID Verification** – Added verification to ensure the track currently playing in LibreTime matches the episode planned in the planner. This detects schedule slipping where wrong episodes play at wrong times. Location: `scripts/stream-health-check.sh`
@@ -32,6 +32,11 @@ This changelog documents all significant changes to the Payload CMS backend serv
   - Adds track ID data to state persistence for debugging
   - More reliable than title comparison (exact ID match vs text matching)
 
+---
+
+## [2025-11-26] - Server-Side Mood/Tone/Energy Filtering for Episodes API
+
+### Added
 - **Server-Side Mood/Tone/Energy Filtering for Episodes API** – Added server-side filtering support for mood, tone, and energy fields via query parameters on `/api/episodes` endpoint. Enables efficient database-level filtering instead of client-side filtering. Location: `src/collections/Episodes.ts`, `src/utils/buildMoodFilters.ts`
   - New query parameters: `mood`, `energy`, `tone`, `toneNot` (all optional, opt-in)
   - Supports single values or arrays (e.g., `mood=groovy` or `mood=groovy&mood=club`)
