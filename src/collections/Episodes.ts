@@ -12,6 +12,7 @@ import type { Field } from 'payload'
 import slugify from 'slugify'
 import { sendEpisodeSubmittedNotification } from '../utils/emailNotifications'
 import { logUploadError, parseErrorCode, extractValidationContext } from '../utils/errorLogger'
+import { buildMoodFilters } from '../utils/buildMoodFilters'
 
 const Episodes: CollectionConfig = {
   slug: 'episodes',
@@ -61,6 +62,18 @@ const Episodes: CollectionConfig = {
     {
       fields: ['scheduledAt', 'scheduledEnd'],
       options: { name: 'idx_schedStart_end' },
+    },
+    {
+      fields: ['mood'],
+      options: { name: 'idx_mood' },
+    },
+    {
+      fields: ['tone'],
+      options: { name: 'idx_tone' },
+    },
+    {
+      fields: ['energy'],
+      options: { name: 'idx_energy' },
     },
   ],
 
@@ -500,7 +513,6 @@ const Episodes: CollectionConfig = {
                 description: 'User who completed classification',
               },
               access: {
-                update: hideFromHosts, // Hosts can read, but cannot modify
                 update: () => false, // Read-only, set by system
               },
             },
@@ -514,7 +526,6 @@ const Episodes: CollectionConfig = {
                 description: 'When classification was completed',
               },
               access: {
-                update: hideFromHosts, // Hosts can read, but cannot modify
                 update: () => false, // Read-only, set by system
               },
             },
@@ -557,6 +568,48 @@ const Episodes: CollectionConfig = {
     },
   ],
   hooks: {
+    beforeOperation: [
+      // Server-side mood/tone/energy filtering via query params
+      ({ args, operation, req }: any) => {
+        // Only process read operations with query params
+        if (operation !== 'read' || !req?.query) {
+          return args
+        }
+
+        // Build mood filters from query params
+        const moodFilters = buildMoodFilters(req.query)
+
+        // If no filters, return args unchanged
+        if (!moodFilters) {
+          return args
+        }
+
+        // Merge mood filters with existing where clause
+        // Ensure args.where exists
+        if (!args.where) {
+          args.where = {}
+        }
+
+        // If where already has conditions, combine using 'and'
+        // Otherwise, merge moodFilters directly into where
+        const existingWhereKeys = Object.keys(args.where).filter(
+          (key) => key !== 'and' && key !== 'or',
+        )
+        const hasExistingConditions =
+          existingWhereKeys.length > 0 || args.where.and || args.where.or
+
+        if (hasExistingConditions) {
+          args.where = {
+            and: [args.where, moodFilters],
+          }
+        } else {
+          // Merge moodFilters directly into where (they're already structured correctly)
+          Object.assign(args.where, moodFilters)
+        }
+
+        return args
+      },
+    ],
     beforeChange: [
       // Audio validation hook - validate file specs when media is added/changed
       async ({ data, originalDoc, req, operation: _operation }: any) => {
@@ -629,7 +682,7 @@ const Episodes: CollectionConfig = {
           }
         } catch (error) {
           console.error('[EPISODE_VALIDATION] Validation failed:', error)
-          
+
           // Log any other unexpected errors
           if (!error.message?.includes('Audio validation failed')) {
             await logUploadError({
@@ -646,7 +699,7 @@ const Episodes: CollectionConfig = {
               req,
             })
           }
-          
+
           throw error // This will prevent the episode from being saved
         }
 
@@ -764,12 +817,12 @@ const Episodes: CollectionConfig = {
       // Auto-increment episode number for a show
       async ({ data, req, operation, originalDoc }) => {
         // Run on CREATE or UPDATE when show is set and no episodeNumber exists
-        const shouldAutoIncrement = 
-          data.show && 
-          !data.episodeNumber && 
+        const shouldAutoIncrement =
+          data.show &&
+          !data.episodeNumber &&
           !originalDoc?.episodeNumber &&
           (operation === 'create' || operation === 'update')
-        
+
         if (shouldAutoIncrement) {
           const episodes = await req.payload.find({
             collection: 'episodes',
@@ -790,8 +843,10 @@ const Episodes: CollectionConfig = {
 
           const nextNumber = Number.isFinite(lastNumber) ? lastNumber + 1 : 1
           data.episodeNumber = String(nextNumber).padStart(3, '0')
-          
-          console.log(`[Episodes] Auto-incremented episodeNumber to ${data.episodeNumber} for show ${data.show}`)
+
+          console.log(
+            `[Episodes] Auto-incremented episodeNumber to ${data.episodeNumber} for show ${data.show}`,
+          )
         }
 
         return data
@@ -823,20 +878,18 @@ const Episodes: CollectionConfig = {
         if (context?.skipSlugRegeneration && operation === 'update') {
           return data
         }
-        
+
         // Always regenerate slug if title or episodeNumber changes
-        const shouldRegenerateSlug = 
-          data.title || 
-          data.episodeNumber || 
-          (operation === 'create' && !data.slug)
-        
+        const shouldRegenerateSlug =
+          data.title || data.episodeNumber || (operation === 'create' && !data.slug)
+
         if (shouldRegenerateSlug || !data.slug) {
           const parts = []
 
           // Use provided title or fall back to originalDoc title
           const title = data.title || originalDoc?.title
           const epNumber = data.episodeNumber || originalDoc?.episodeNumber
-          
+
           if (title) {
             parts.push(title)
           }

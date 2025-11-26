@@ -45,10 +45,13 @@ This changelog documents all significant changes to the Payload CMS backend serv
   - Tone filter includes episodes with null/undefined tone (OR logic)
   - ToneNot filter excludes specific tones while allowing null tones
   - Combined tone/toneNot filters apply both conditions (AND logic)
-  - Implemented via `beforeRead` hook for database-level filtering
+  - Implemented via `beforeOperation` hook for database-level filtering
   - Added MongoDB indexes on `mood`, `tone`, `energy` fields for query performance
   - Backward compatible: existing API calls without new params work unchanged
   - Returns `null` if all normalized arrays are empty (no filters applied)
+
+### Fixed
+- **Mood Filter Hook Implementation** – Fixed server-side mood/tone/energy filtering by changing from `beforeRead` to `beforeOperation` hook. The `beforeRead` hook modifies documents after retrieval, not queries before execution. The `beforeOperation` hook correctly modifies `args.where` before the database query executes, ensuring filters are properly applied. Location: `src/collections/Episodes.ts`
 
 ---
 
