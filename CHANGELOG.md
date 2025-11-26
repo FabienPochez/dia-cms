@@ -20,6 +20,20 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-26] - Track ID Verification for Schedule Slip Detection
+
+### Added
+- **Track ID Verification** – Added verification to ensure the track currently playing in LibreTime matches the episode planned in the planner. This detects schedule slipping where wrong episodes play at wrong times. Location: `scripts/stream-health-check.sh`
+  - Extracts `file_id` (track ID) from LibreTime's currently playing schedule
+  - Compares with `FEED_FIRST_ID` (track ID from planner feed)
+  - Sets `TRACK_ID_MISMATCH=true` when IDs don't match
+  - Integrates with existing `MISMATCH` logic to trigger restarts via existing mechanism
+  - Logs track ID mismatches for monitoring
+  - Adds track ID data to state persistence for debugging
+  - More reliable than title comparison (exact ID match vs text matching)
+
+---
+
 ## [2025-11-25] - Deterministic Feed Schedule Delta & Suppression Fixes
 
 ### Fixed

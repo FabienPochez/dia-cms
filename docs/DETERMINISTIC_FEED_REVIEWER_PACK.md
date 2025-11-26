@@ -28,6 +28,7 @@ The deterministic feed was implemented on **November 7, 2025** to provide LibreT
 - **Nov 25, 2025**: Large schedule delta fix implemented (skip schedule application when correct show playing)
 - **Nov 25, 2025**: Schedule change detection and suppression logic fix implemented
 - **Nov 25, 2025**: Watchdog restart triggers simplified and hard-skew constrained
+- **Nov 26, 2025**: Track ID verification implemented to detect schedule slipping
 
 ---
 
@@ -227,7 +228,36 @@ The deterministic feed was implemented on **November 7, 2025** to provide LibreT
 
 ---
 
-### 7. Stream Interruptions & Delays (General)
+### 7. Schedule Slip Detection (Nov 26, 2025) ✅ FIXED
+
+**Problem**: No verification that the track actually playing in LibreTime matches the episode planned in the planner, allowing schedule slipping to go undetected.
+
+**Root Cause**:
+- Health check only compared titles (text matching) between Icecast stream and LibreTime schedule
+- Title comparison is unreliable (text matching, encoding issues, special characters)
+- No direct ID-based verification between what's playing and what should be playing
+- Schedule slipping could occur where wrong episodes play at wrong times without detection
+
+**Example**:
+- Planner schedules Episode A (track ID 123) for 10:00-11:00
+- LibreTime plays Episode B (track ID 456) instead
+- Title comparison might match if titles are similar, missing the slip
+- Episode continues playing wrong content for extended periods
+
+**Fix Applied**:
+- Extract `file_id` (track ID) from LibreTime's currently playing schedule
+- Compare with `FEED_FIRST_ID` (track ID from planner feed)
+- Set `TRACK_ID_MISMATCH=true` when IDs don't match
+- Integrate with existing `MISMATCH` logic to trigger restarts via existing mechanism
+- Log track ID mismatches for monitoring
+- Add track ID data to state persistence for debugging
+- Location: `scripts/stream-health-check.sh` (lines 266-270, 272-280, 384-392, 742-748, 750-774)
+
+**Status**: ✅ Fixed - Nov 26, 2025
+
+---
+
+### 8. Stream Interruptions & Delays (General)
 
 **Problem**: Various interruptions and delays affecting listener experience.
 
@@ -269,6 +299,7 @@ The deterministic feed was implemented on **November 7, 2025** to provide LibreT
 | Suppression logic | Prevent suppression when show exceeds end time | `scripts/stream-health-check.sh` | Nov 21 |
 | Restart reasons | Specific reason codes for different scenarios | `scripts/stream-health-check.sh` | Nov 21 |
 | Schedule change detection | Detect when feed schedule changes (new show should start) | `scripts/stream-health-check.sh` | Nov 25 |
+| Track ID verification | Verify playing track ID matches planner episode ID | `scripts/stream-health-check.sh` | Nov 26 |
 
 ### 3. LibreTime Patches
 
@@ -284,6 +315,7 @@ The deterministic feed was implemented on **November 7, 2025** to provide LibreT
 ### Normal Operation
 - Health check runs every 60 seconds
 - Compares Icecast stream title with scheduled show
+- Verifies track ID from currently playing schedule matches planner feed track ID
 - Monitors deterministic feed status and version
 - Detects end time violations with 60-second threshold
 - Auto-recovers from desync within 2-3 minutes
@@ -295,6 +327,7 @@ The deterministic feed was implemented on **November 7, 2025** to provide LibreT
 4. **Critical title** (`critical-title`): Stream shows "Unknown" or "OFFLINE"
 5. **Feed error** (`feed-error`): Deterministic feed in error state for extended period
 6. **Schedule changed** (`schedule-changed`): Feed schedule changed (new show should have started) - ✅ Implemented Nov 25, 2025
+7. **Track ID mismatch**: Track ID from currently playing schedule doesn't match planner feed track ID - ✅ Implemented Nov 26, 2025 (triggers via existing `MISMATCH` mechanism)
 
 ### Suppression Logic
 - Suppresses restarts for "stable-longtrack" scenarios (same show, bytes increasing, within skew)
@@ -454,8 +487,8 @@ The deterministic feed implementation has significantly improved schedule reliab
 
 ---
 
-**Document Version**: 1.3  
-**Last Updated**: November 25, 2025  
+**Document Version**: 1.4  
+**Last Updated**: November 26, 2025  
 **Author**: AI Assistant  
 **Status**: Updated with fixes
 

@@ -263,13 +263,23 @@ SCHEDULE_INSTANCE_ID=""
 SCHEDULED_TITLE="NONE"
 TRACK_DURATION=0
 TRACK_ELAPSED=0
+CURRENTLY_PLAYING_TRACK_ID=""
 info=$(docker exec -i libretime-postgres-1 psql -U libretime -d libretime -At -F '|' -c \
-    "SELECT COALESCE(s.instance_id::text, s.id::text), COALESCE(f.track_title,''), EXTRACT(EPOCH FROM f.length), EXTRACT(EPOCH FROM (NOW() - s.starts)) FROM cc_schedule s JOIN cc_files f ON s.file_id = f.id WHERE s.starts <= NOW() AND s.ends > NOW() LIMIT 1;" 2>/dev/null | tr -d '\r')
+    "SELECT COALESCE(s.instance_id::text, s.id::text), COALESCE(f.track_title,''), EXTRACT(EPOCH FROM f.length), EXTRACT(EPOCH FROM (NOW() - s.starts)), s.file_id::text FROM cc_schedule s JOIN cc_files f ON s.file_id = f.id WHERE s.starts <= NOW() AND s.ends > NOW() LIMIT 1;" 2>/dev/null | tr -d '\r')
 if [ -n "$info" ]; then
-    IFS='|' read -r SCHEDULE_INSTANCE_ID SCHEDULED_TITLE TRACK_DURATION TRACK_ELAPSED <<< "$info"
+    IFS='|' read -r SCHEDULE_INSTANCE_ID SCHEDULED_TITLE TRACK_DURATION TRACK_ELAPSED CURRENTLY_PLAYING_TRACK_ID <<< "$info"
 fi
 
 check_deterministic_feed || true
+
+# Track ID verification - detect schedule slipping
+TRACK_ID_MISMATCH=false
+if [ -n "$CURRENTLY_PLAYING_TRACK_ID" ] && [ -n "$FEED_FIRST_ID" ]; then
+    if [ "$CURRENTLY_PLAYING_TRACK_ID" != "$FEED_FIRST_ID" ]; then
+        TRACK_ID_MISMATCH=true
+        log "⚠️  Track ID mismatch: playing=${CURRENTLY_PLAYING_TRACK_ID} expected=${FEED_FIRST_ID}"
+    fi
+fi
 
 # Detect schedule changes (A2)
 FEED_SCHEDULE_CHANGED=false
@@ -389,6 +399,11 @@ if [ "$SCHEDULED_TITLE" != "NONE" ] && [ "$SCHEDULED_TITLE" != "ERROR" ]; then
     if [[ ! "$ICECAST_SHORT" =~ "$SCHEDULED_SHORT" ]]; then
         MISMATCH=true
     fi
+fi
+
+# Add track ID mismatch check - triggers restarts via existing mechanism
+if [ "$TRACK_ID_MISMATCH" = true ]; then
+    MISMATCH=true
 fi
 
 if [ "$ICECAST_BYTES" -le "$PREV_BYTES" ] && [ "$ICECAST_BYTES" != "0" ]; then
@@ -724,6 +739,14 @@ else
     ICECAST_TITLE_JSON="\"\""
 fi
 
+if [ -n "$CURRENTLY_PLAYING_TRACK_ID" ]; then
+    CURRENTLY_PLAYING_TRACK_ID_JSON="\"$CURRENTLY_PLAYING_TRACK_ID\""
+else
+    CURRENTLY_PLAYING_TRACK_ID_JSON="\"\""
+fi
+
+TRACK_ID_MISMATCH_JSON=$([ "$TRACK_ID_MISMATCH" = true ] && echo "true" || echo "false")
+
 cat <<EOF > "$STATE_FILE"
 {
   "mismatch_start": "$MISMATCH_START",
@@ -746,6 +769,8 @@ cat <<EOF > "$STATE_FILE"
   "feed_version_delta": $FEED_VERSION_DELTA_JSON,
   "feed_missing_count": $FEED_MISSING_COUNT_JSON,
   "feed_total_count": $FEED_TOTAL_COUNT_JSON,
-  "feed_last_ok_version": $FEED_LAST_OK_VERSION_JSON
+  "feed_last_ok_version": $FEED_LAST_OK_VERSION_JSON,
+  "currently_playing_track_id": $CURRENTLY_PLAYING_TRACK_ID_JSON,
+  "track_id_mismatch": $TRACK_ID_MISMATCH_JSON
 }
 EOF
