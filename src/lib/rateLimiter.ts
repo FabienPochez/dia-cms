@@ -1,6 +1,6 @@
 /**
- * Simple in-memory rate limiter for password change operations
- * Tracks attempts by IP + user ID to prevent brute force attacks
+ * Simple in-memory rate limiter for password operations
+ * Tracks attempts by IP + identifier (user ID or email) to prevent brute force attacks
  * 
  * Note: This is fine for single-instance/dev. For production scale or serverless,
  * migrate to Redis to share rate-limit state across instances.
@@ -146,8 +146,11 @@ class RateLimiter {
   }
 }
 
-// Export singleton instance for password change operations
+// Export singleton instance for password change operations (uses IP + user ID)
 export const passwordChangeRateLimiter = new RateLimiter(5, 60000) // 5 attempts per minute
+
+// Export singleton instance for forgot password operations (uses IP + email)
+export const forgotPasswordRateLimiter = new RateLimiter(5, 60000) // 5 attempts per minute
 
 
 

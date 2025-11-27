@@ -24,6 +24,7 @@ const dirname = path.dirname(filename)
 
 const allowedOrigins = [
   'https://dia-radio-app.vercel.app',
+  'https://dia-web.vercel.app',
   'http://localhost:5173',
   'http://localhost:3000',
 ]

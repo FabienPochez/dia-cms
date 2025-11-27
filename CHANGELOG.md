@@ -20,6 +20,48 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-11-27] - App Forgot Password Endpoint
+
+### Added
+- **App Forgot Password Endpoint** – New endpoint for app/web frontend to request password reset emails with custom template linking to `dia-web.vercel.app`. Separate from admin panel flow which uses `content.diaradio.live`. Location: `src/app/api/auth/app/forgot-password/route.ts`
+  - Endpoint: `POST /api/auth/app/forgot-password`
+  - Accepts `{ email: string }` request body
+  - Generates secure reset token using `crypto.randomBytes(32)` (64-character hex)
+  - Saves token and expiration (1 hour) to user document
+  - Sends custom HTML email with app-specific messaging
+  - Reset link format: `https://dia-web.vercel.app/reset-password?token={token}`
+  - Email subject: "Reset your Dia Radio app account password"
+  - Returns generic `{ success: true }` response (prevents user enumeration)
+  - Rate limiting: 5 attempts per minute per IP+email combination
+  - Reuses existing `POST /api/users/reset-password` endpoint for password reset (Payload built-in)
+
+- **Forgot Password Rate Limiter** – Added rate limiter instance for app forgot password endpoint. Location: `src/lib/rateLimiter.ts`
+  - New export: `forgotPasswordRateLimiter`
+  - Configuration: 5 attempts per minute per IP+email
+  - Prevents email spam/abuse
+  - Returns `429 Too Many Requests` with `Retry-After` header when limit exceeded
+
+- **CORS Configuration Update** – Added `https://dia-web.vercel.app` to allowed origins for app forgot password endpoint. Location: `src/payload.config.ts`
+  - Added to `allowedOrigins` array
+  - Included in both `cors` and `csrf` configurations
+
+- **App Forgot Password API Documentation** – Comprehensive API documentation for app forgot password endpoint. Location: `docs/APP_FORGOT_PASSWORD_API.md`
+  - Endpoint contract and request/response formats
+  - Rate limiting details
+  - Security considerations
+  - Integration examples (JavaScript, Vue.js)
+  - Testing guidelines
+  - Password reset flow documentation
+
+### Security
+- **User Enumeration Prevention** – App forgot password endpoint always returns `{ success: true }` regardless of whether email exists, preventing attackers from discovering registered emails
+- **Rate Limiting** – Prevents email spam/abuse with 5 requests per minute per IP+email limit
+- **Secure Token Generation** – Uses cryptographically secure random token generation (`crypto.randomBytes(32)`)
+- **Token Expiry** – Reset tokens expire after 1 hour (matches admin flow)
+- **Single-Use Tokens** – Tokens are invalidated after successful password reset via Payload's built-in logic
+
+---
+
 ## [2025-11-26] - Track ID Verification for Schedule Slip Detection
 
 ### Added
