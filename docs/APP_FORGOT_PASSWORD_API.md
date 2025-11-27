@@ -1,6 +1,6 @@
 # App Forgot Password API
 
-**Endpoint**: `POST /api/auth/app/forgot-password`  
+**Endpoint**: `POST /api/app-forgot-password`  
 **Purpose**: Request password reset email for Dia Radio app/web accounts  
 **Status**: ✅ Implemented
 
@@ -23,7 +23,7 @@ This endpoint allows users to request a password reset email for their Dia Radio
 
 ### Endpoint
 ```
-POST /api/auth/app/forgot-password
+POST /api/app-forgot-password
 ```
 
 ### Headers
@@ -43,7 +43,7 @@ Content-Type: application/json
 
 ### Example Request
 ```bash
-curl -X POST https://content.diaradio.live/api/auth/app/forgot-password \
+curl -X POST https://content.diaradio.live/api/app-forgot-password \
   -H "Content-Type: application/json" \
   -d '{"email": "user@example.com"}'
 ```
@@ -146,7 +146,7 @@ https://dia-web.vercel.app/reset-password?token={token}
 
 ### Step 1: Request Reset Email
 ```bash
-POST /api/auth/app/forgot-password
+POST /api/app-forgot-password
 {
   "email": "user@example.com"
 }
@@ -205,7 +205,7 @@ POST /api/users/reset-password
 ```typescript
 async function requestPasswordReset(email: string) {
   try {
-    const response = await fetch('https://content.diaradio.live/api/auth/app/forgot-password', {
+    const response = await fetch('https://content.diaradio.live/api/app-forgot-password', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -257,7 +257,7 @@ async function handleForgotPassword() {
   message.value = ''
 
   try {
-    const response = await fetch('https://content.diaradio.live/api/auth/app/forgot-password', {
+    const response = await fetch('https://content.diaradio.live/api/app-forgot-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.value }),
@@ -316,7 +316,7 @@ async function handleForgotPassword() {
 
 ## Implementation Details
 
-**File**: `src/app/api/auth/app/forgot-password/route.ts`
+**File**: `src/app/api/app-forgot-password/route.ts`
 
 **Dependencies:**
 - `@/lib/rateLimiter` - Rate limiting utility

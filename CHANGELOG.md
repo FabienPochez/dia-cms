@@ -23,8 +23,8 @@ This changelog documents all significant changes to the Payload CMS backend serv
 ## [2025-11-27] - App Forgot Password Endpoint
 
 ### Added
-- **App Forgot Password Endpoint** – New endpoint for app/web frontend to request password reset emails with custom template linking to `dia-web.vercel.app`. Separate from admin panel flow which uses `content.diaradio.live`. Location: `src/app/api/auth/app/forgot-password/route.ts`
-  - Endpoint: `POST /api/auth/app/forgot-password`
+- **App Forgot Password Endpoint** – New endpoint for app/web frontend to request password reset emails with custom template linking to `dia-web.vercel.app`. Separate from admin panel flow which uses `content.diaradio.live`. Location: `src/app/api/app-forgot-password/route.ts`
+  - Endpoint: `POST /api/app-forgot-password`
   - Accepts `{ email: string }` request body
   - Generates secure reset token using `crypto.randomBytes(32)` (64-character hex)
   - Saves token and expiration (1 hour) to user document

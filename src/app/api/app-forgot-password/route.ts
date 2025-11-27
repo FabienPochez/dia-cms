@@ -6,7 +6,7 @@ import crypto from 'crypto'
 
 /**
  * App forgot password endpoint
- * POST /api/auth/app/forgot-password
+ * POST /api/app-forgot-password
  * 
  * Sends password reset email with custom template linking to dia-web.vercel.app
  * Separate from admin forgot password flow which uses content.diaradio.live
