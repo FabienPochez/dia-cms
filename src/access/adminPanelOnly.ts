@@ -18,5 +18,18 @@ export const adminPanelOnly = ({ req }: { req: PayloadRequest }): boolean => {
   if (!user) return true
 
   // Allow authenticated admin/staff for collection management
-  return ['admin', 'staff'].includes(user.role)
+  const allowed = ['admin', 'staff'].includes(user.role)
+
+  // Debug logging for delete operations
+  if (req.method === 'DELETE' || req.url?.includes('DELETE')) {
+    console.log('[adminPanelOnly] DELETE request check:', {
+      userId: user?.id,
+      role: user?.role,
+      allowed,
+      url: req.url,
+      method: req.method,
+    })
+  }
+
+  return allowed
 }

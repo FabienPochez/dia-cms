@@ -22,13 +22,23 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [2025-11-27] - App Forgot Password Endpoint
 
+### Added
+- **Self-Service Account Deletion Endpoint** – New custom endpoint for users to delete their own accounts. Location: `src/app/api/delete-account/route.ts`
+  - **Endpoint**: `DELETE /api/delete-account`
+  - **Implementation**: Custom endpoint using flat path structure (`/api/delete-account`) to avoid Payload's catch-all route handler
+  - **Authentication**: Requires valid JWT token or session cookie
+  - **Self-Service**: Automatically uses authenticated user's ID from session (no user ID needed in URL)
+  - **Security**: Uses `overrideAccess: true` after verifying authentication, ensuring users can only delete their own accounts
+  - **Response**: Returns `{ success: true, message: "Account deleted successfully" }` on success
+  - **Error Handling**: Returns appropriate error messages for authentication failures and server errors
+  - **Implementation Note**: Initially attempted Option 1 (modifying `access.delete` in Users collection), but Payload's access control wasn't being called for REST API delete operations. Switched to Option 2 (custom endpoint) which provides more reliable control and follows the pattern of `/api/users/change-password` and `/api/app-forgot-password`
+  - **Documentation**: Comprehensive API documentation added at `docs/ACCOUNT_DELETION_API.md` with examples for JavaScript, Vue.js, and Axios
+
 ### Changed
-- **Self-Service Account Deletion** – Updated user deletion access control to allow users to delete their own accounts in addition to admin-only deletion. Location: `src/collections/Users.ts`
-  - **Implementation Choice**: Modified `access.delete` to allow self-deletion (Option 1) rather than creating a custom `/api/users/me` DELETE endpoint (Option 2)
-  - **Option 1 (Chosen)**: Updated `access.delete` to check if the authenticated user's ID matches the target user ID, similar to the existing `update` access pattern. Users can now call `DELETE /api/users/{theirUserId}` to delete their own account.
-  - **Option 2 (Not Chosen)**: Creating a custom `/api/users/me` DELETE endpoint would provide a cleaner API (no user ID in URL) and follow the pattern of `/api/users/change-password`, but was deferred in favor of the simpler approach that reuses Payload's built-in REST API.
-  - **Access Control**: Admins can still delete any user, and users can now delete themselves. Unauthenticated users cannot delete accounts.
-  - **Security**: Self-deletion requires authentication and the user ID must match the authenticated user's ID, preventing users from deleting other users' accounts.
+- **User Deletion Access Control** – Updated `access.delete` in Users collection to allow self-deletion (though not used due to custom endpoint implementation). Location: `src/collections/Users.ts`
+  - Modified `access.delete` to check if authenticated user's ID matches target user ID
+  - Added debug logging for troubleshooting
+  - Note: This change is present but the custom endpoint bypasses it using `overrideAccess: true`
 
 ### Fixed
 - **Stream Health Check Script Crash** – Fixed critical bug in stream health check script that caused crashes when schedule changes were detected. The script was using `local` keyword outside of a function and referencing `NOW_TS` before it was defined. This caused the script to fail silently, preventing state file updates and generating false positive track ID mismatches. Location: `scripts/stream-health-check.sh`

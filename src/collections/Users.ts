@@ -72,11 +72,21 @@ export const Users: CollectionConfig = {
       if (u.role === 'admin') return true
       return String(u.id) === String(id) // <<< normalize for ObjectId/string
     },
-    delete: ({ req, id }) => {
+    delete: ({ req, id, doc }) => {
       const user = req.user as any
+      // Debug logging (similar to update)
+      console.log('[Users.delete access]', {
+        authed: !!user,
+        userId: user?.id,
+        targetId: id,
+        docId: doc?.id,
+        role: user?.role,
+      })
       if (!user) return false
       if (user.role === 'admin') return true
-      return String(user.id) === String(id) // Allow users to delete themselves
+      // Use doc.id if available, otherwise fall back to id parameter
+      const targetId = doc?.id || id
+      return String(user.id) === String(targetId) // Allow users to delete themselves
     },
   },
   // Let Payload handle auth with default settings
