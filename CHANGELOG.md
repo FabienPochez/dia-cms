@@ -22,6 +22,13 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [2025-11-27] - App Forgot Password Endpoint
 
+### Fixed
+- **Stream Health Check Script Crash** – Fixed critical bug in stream health check script that caused crashes when schedule changes were detected. The script was using `local` keyword outside of a function and referencing `NOW_TS` before it was defined. This caused the script to fail silently, preventing state file updates and generating false positive track ID mismatches. Location: `scripts/stream-health-check.sh`
+  - Removed `local` keywords from schedule change grace period detection (lines 296, 299)
+  - Added `NOW_TS` initialization before schedule change detection
+  - Script now completes successfully and updates state file correctly
+  - Track ID verification now works reliably without false positives
+
 ### Added
 - **App Forgot Password Endpoint** – New endpoint for app/web frontend to request password reset emails with custom template linking to `dia-web.vercel.app`. Separate from admin panel flow which uses `content.diaradio.live`. Location: `src/app/api/app-forgot-password/route.ts`
   - Endpoint: `POST /api/app-forgot-password`

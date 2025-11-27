@@ -286,6 +286,9 @@ FEED_SCHEDULE_CHANGED=false
 SCHEDULE_CHANGE_ACTIVE=false
 SCHEDULE_CHANGE_GRACE_SEC=45
 
+# Get current timestamp for schedule change detection
+NOW_TS=$(date +%s)
+
 if [ -n "$FEED_FIRST_START" ] && [ -n "$PREV_FEED_FIRST_START" ]; then
     if [ "$FEED_FIRST_START" != "$PREV_FEED_FIRST_START" ] || [ "$FEED_FIRST_ID" != "$PREV_FEED_FIRST_ID" ]; then
         FEED_SCHEDULE_CHANGED=true
@@ -293,10 +296,9 @@ if [ -n "$FEED_FIRST_START" ] && [ -n "$PREV_FEED_FIRST_START" ]; then
         
         # Check if grace period has passed
         if [ -n "$FEED_FIRST_START" ]; then
-            local new_first_start_ts
             new_first_start_ts=$(date -u -d "${FEED_FIRST_START}Z" +%s 2>/dev/null || echo "")
             if [ -n "$new_first_start_ts" ] && [[ "$new_first_start_ts" =~ ^[0-9]+$ ]]; then
-                local grace_threshold=$(( new_first_start_ts + SCHEDULE_CHANGE_GRACE_SEC ))
+                grace_threshold=$(( new_first_start_ts + SCHEDULE_CHANGE_GRACE_SEC ))
                 if [ "$NOW_TS" -ge "$grace_threshold" ]; then
                     SCHEDULE_CHANGE_ACTIVE=true
                 fi
