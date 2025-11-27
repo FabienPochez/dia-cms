@@ -80,3 +80,8 @@ out.txt
 *.backup
 *.backup.*
 *.backup-*
+
+# One-off utility scripts with hardcoded values
+scripts/generate-api-key-for-user.ts
+scripts/hydrate-single-episode.ts
+scripts/update-api-key-user-role.ts
