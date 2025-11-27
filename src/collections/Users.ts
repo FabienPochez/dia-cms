@@ -72,10 +72,11 @@ export const Users: CollectionConfig = {
       if (u.role === 'admin') return true
       return String(u.id) === String(id) // <<< normalize for ObjectId/string
     },
-    delete: ({ req }) => {
+    delete: ({ req, id }) => {
       const user = req.user as any
       if (!user) return false
-      return user.role === 'admin' // Only admin can delete users
+      if (user.role === 'admin') return true
+      return String(user.id) === String(id) // Allow users to delete themselves
     },
   },
   // Let Payload handle auth with default settings

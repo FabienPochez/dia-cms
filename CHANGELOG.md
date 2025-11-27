@@ -22,6 +22,14 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [2025-11-27] - App Forgot Password Endpoint
 
+### Changed
+- **Self-Service Account Deletion** – Updated user deletion access control to allow users to delete their own accounts in addition to admin-only deletion. Location: `src/collections/Users.ts`
+  - **Implementation Choice**: Modified `access.delete` to allow self-deletion (Option 1) rather than creating a custom `/api/users/me` DELETE endpoint (Option 2)
+  - **Option 1 (Chosen)**: Updated `access.delete` to check if the authenticated user's ID matches the target user ID, similar to the existing `update` access pattern. Users can now call `DELETE /api/users/{theirUserId}` to delete their own account.
+  - **Option 2 (Not Chosen)**: Creating a custom `/api/users/me` DELETE endpoint would provide a cleaner API (no user ID in URL) and follow the pattern of `/api/users/change-password`, but was deferred in favor of the simpler approach that reuses Payload's built-in REST API.
+  - **Access Control**: Admins can still delete any user, and users can now delete themselves. Unauthenticated users cannot delete accounts.
+  - **Security**: Self-deletion requires authentication and the user ID must match the authenticated user's ID, preventing users from deleting other users' accounts.
+
 ### Fixed
 - **Stream Health Check Script Crash** – Fixed critical bug in stream health check script that caused crashes when schedule changes were detected. The script was using `local` keyword outside of a function and referencing `NOW_TS` before it was defined. This caused the script to fail silently, preventing state file updates and generating false positive track ID mismatches. Location: `scripts/stream-health-check.sh`
   - Removed `local` keywords from schedule change grace period detection (lines 296, 299)
