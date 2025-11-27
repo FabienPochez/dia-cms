@@ -26,7 +26,7 @@ export const Users: CollectionConfig = {
     forgotPassword: {
       generateEmailSubject: () => 'Reset your DIA! Radio password',
     },
-    verify: true, // Enable email verification for new users
+    verify: false, // Email verification disabled - users can log in immediately after signup
   },
   admin: {
     useAsTitle: 'email',
