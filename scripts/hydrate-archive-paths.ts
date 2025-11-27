@@ -78,8 +78,9 @@ if (!LIBRETIME_API_KEY) {
 
 // Helper functions
 function buildPayloadAuthHeaders() {
+  const PAYLOAD_AUTH_SLUG = process.env.PAYLOAD_AUTH_SLUG || 'users'
   return {
-    Authorization: `JWT ${PAYLOAD_API_KEY}`,
+    Authorization: `${PAYLOAD_AUTH_SLUG} API-Key ${PAYLOAD_API_KEY}`,
     'Content-Type': 'application/json',
   }
 }
