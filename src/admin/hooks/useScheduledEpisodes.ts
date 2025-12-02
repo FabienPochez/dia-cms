@@ -22,7 +22,7 @@ export const useScheduledEpisodes = (): UseScheduledEpisodesReturn => {
 
       // Build query parameters for scheduled episodes
       const params = new URLSearchParams({
-        limit: '100', // Get more scheduled episodes
+        limit: '1000', // Fetch more episodes to display full schedule history
         where: JSON.stringify({
           publishedStatus: { equals: 'published' },
           scheduledAt: { exists: true },

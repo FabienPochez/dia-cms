@@ -15,12 +15,19 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [Unreleased]
 
+---
+
+## [2025-12-02] - Planner Episode Fetch Limit Increase
+
 ### Changed
-- **Planner Duration Filter** – Relaxed minimum duration requirements for longer slots (90, 120, 180+ minutes). Only 30 and 60 minute slots now enforce minimum duration checks (≥29min and ≥59min respectively). Longer slots can be manually adjusted/cut in the planner, so episodes like 75-minute or 110-minute shows will now appear in the planner for manual scheduling. Location: `src/admin/hooks/useUnscheduledEpisodes.ts`
+- **Planner Episode Display Limit** – Increased scheduled episode fetch limit from 100 to 1,000 episodes to display full schedule history in custom planner. This change only affects the planner UI display; LibreTime sync continues to operate on the 3-week envelope as designed. Location: `src/admin/hooks/useScheduledEpisodes.ts`
 
 ---
 
-## [2025-11-27] - App Forgot Password Endpoint
+## [2025-11-27] - Planner Duration Filter & App Forgot Password
+
+### Changed
+- **Planner Duration Filter** – Relaxed minimum duration requirements for longer slots (90, 120, 180+ minutes). Only 30 and 60 minute slots now enforce minimum duration checks (≥29min and ≥59min respectively). Longer slots can be manually adjusted/cut in the planner, so episodes like 75-minute or 110-minute shows will now appear in the planner for manual scheduling. Location: `src/admin/hooks/useUnscheduledEpisodes.ts`
 
 ### Added
 - **Self-Service Account Deletion Endpoint** – New custom endpoint for users to delete their own accounts. Location: `src/app/api/delete-account/route.ts`
