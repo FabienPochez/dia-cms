@@ -79,10 +79,10 @@ function getWeekEnd(date: Date, weeksOffset: number = 0): Date {
 }
 
 /**
- * Add 7 days to a date
+ * Add N weeks to a date
  */
-function addWeek(date: Date): Date {
-  return new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000)
+function addWeeks(date: Date, weeks: number): Date {
+  return new Date(date.getTime() + weeks * 7 * 24 * 60 * 60 * 1000)
 }
 
 async function main() {
@@ -95,23 +95,29 @@ async function main() {
   const payload = await getPayload({ config })
   const now = new Date()
   
-  // Calculate last week's range (Monday 00:00 to Sunday 23:59:59)
-  const lastWeekStart = getWeekStart(now, -1)
-  const lastWeekEnd = getWeekEnd(now, -1)
+  // Calculate source week's range (Monday 00:00 to Sunday 23:59:59)
+  // Using -3 to copy from Nov 11-17 week
+  const SOURCE_WEEK_OFFSET = -3  // weeks ago
+  const WEEKS_TO_ADD = 3  // add 3 weeks to get to current week
   
-  console.log(`📆 Last week: ${lastWeekStart.toISOString()} to ${lastWeekEnd.toISOString()}`)
-  console.log(`📆 This week: ${addWeek(lastWeekStart).toISOString()} to ${addWeek(lastWeekEnd).toISOString()}\n`)
+  const sourceWeekStart = getWeekStart(now, SOURCE_WEEK_OFFSET)
+  const sourceWeekEnd = getWeekEnd(now, SOURCE_WEEK_OFFSET)
+  const currentWeekStart = getWeekStart(now, 0)
+  const currentWeekEnd = getWeekEnd(now, 0)
+  
+  console.log(`📆 Source week: ${sourceWeekStart.toISOString()} to ${sourceWeekEnd.toISOString()}`)
+  console.log(`📆 Target week (current): ${currentWeekStart.toISOString()} to ${currentWeekEnd.toISOString()}\n`)
 
-  // Query episodes scheduled last week
-  console.log('🔍 Querying episodes from last week...')
+  // Query episodes scheduled in source week
+  console.log('🔍 Querying episodes from source week...')
   const episodesResult = await payload.find({
     collection: 'episodes',
     where: {
       and: [
         { scheduledAt: { exists: true } },
         { scheduledEnd: { exists: true } },
-        { scheduledAt: { greater_than_equal: lastWeekStart.toISOString() } },
-        { scheduledAt: { less_than_equal: lastWeekEnd.toISOString() } },
+        { scheduledAt: { greater_than_equal: sourceWeekStart.toISOString() } },
+        { scheduledAt: { less_than_equal: sourceWeekEnd.toISOString() } },
         { publishedStatus: { equals: 'published' } },
       ],
     },
@@ -121,7 +127,7 @@ async function main() {
   })
 
   const episodes = episodesResult.docs as Episode[]
-  console.log(`✅ Found ${episodes.length} episodes scheduled last week\n`)
+  console.log(`✅ Found ${episodes.length} episodes scheduled in source week\n`)
 
   if (episodes.length === 0) {
     console.log('⚠️  No episodes found. Nothing to copy.')
@@ -163,8 +169,8 @@ async function main() {
   for (const episode of validEpisodes) {
     const oldStart = new Date(episode.scheduledAt)
     const oldEnd = new Date(episode.scheduledEnd)
-    const newStart = addWeek(oldStart)
-    const newEnd = addWeek(oldEnd)
+    const newStart = addWeeks(oldStart, WEEKS_TO_ADD)
+    const newEnd = addWeeks(oldEnd, WEEKS_TO_ADD)
 
     const show = typeof episode.show === 'object' ? episode.show : null
     const showId = show?.id || (typeof episode.show === 'string' ? episode.show : null)

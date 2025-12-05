@@ -1247,10 +1247,12 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 TZ=Europe/Paris
 
 # Pre-air (every 15m, offset) — prevent overlap with flock
-7,22,37,52 * * * * /usr/bin/flock -n /tmp/dia-preair.lock curl -fsS --retry 2 --retry-delay 10 -X POST https://content.diaradio.live/api/lifecycle/preair-rehydrate >> /var/log/dia-cron/preair-rehydrate.log 2>&1
+# Note: Runs script directly (not via HTTP API) - no authentication needed
+*/15 * * * * /usr/bin/flock -n /tmp/dia-preair.lock docker compose -f /srv/payload/docker-compose.yml exec -T dev-scripts sh -lc 'npx tsx scripts/cron/preair_rehydrate.ts' >> /var/log/dia-cron/preair-rehydrate.log 2>&1
 
-# Post-air (every 15m, offset) — prevent overlap with flock
-12,27,42,57 * * * * /usr/bin/flock -n /tmp/dia-postair.lock curl -fsS --retry 2 --retry-delay 10 -X POST https://content.diaradio.live/api/lifecycle/postair-archive >> /var/log/dia-cron/postair-archive.log 2>&1
+# Post-air (every 10m, offset) — prevent overlap with flock
+# Note: Runs script directly (not via HTTP API) - no authentication needed
+*/10 * * * * /usr/bin/flock -n /tmp/dia-postair.lock docker compose -f /srv/payload/docker-compose.yml exec -T dev-scripts sh -lc 'npx tsx scripts/cron/postair_archive_cleanup.ts' >> /var/log/dia-cron/postair-archive.log 2>&1
 
 # File exists check (daily at 3 AM) — prevent playout errors from missing files
 0 3 * * * /usr/bin/flock -n /tmp/dia-filecheck.lock /srv/payload/scripts/fix-libretime-file-exists.sh >> /var/log/dia-cron/file-exists-check.log 2>&1
@@ -1280,8 +1282,17 @@ Automatically ensures working files are available for scheduled episodes.
 **Script**: `scripts/cron/preair_rehydrate.ts`
 
 ```bash
-# Manual HTTP trigger (inside server tunnel)
-curl -X POST http://localhost:3000/api/lifecycle/preair-rehydrate
+# Manual HTTP trigger (requires admin/staff authentication)
+# Using API Key:
+curl -X POST https://content.diaradio.live/api/lifecycle/preair-rehydrate \
+  -H "Authorization: users API-Key YOUR_API_KEY"
+
+# Using JWT Bearer token:
+curl -X POST https://content.diaradio.live/api/lifecycle/preair-rehydrate \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Or run script directly (no auth needed):
+docker compose -f /srv/payload/docker-compose.yml exec -T dev-scripts sh -lc 'npx tsx scripts/cron/preair_rehydrate.ts'
 ```
 
 **Process**:
@@ -1305,8 +1316,17 @@ Automatically updates airing metrics and cleans up working files after episodes 
 **Script**: `scripts/cron/postair_archive_cleanup.ts`
 
 ```bash
-# Manual HTTP trigger (inside server tunnel)
-curl -X POST http://localhost:3000/api/lifecycle/postair-archive
+# Manual HTTP trigger (requires admin/staff authentication)
+# Using API Key:
+curl -X POST https://content.diaradio.live/api/lifecycle/postair-archive \
+  -H "Authorization: users API-Key YOUR_API_KEY"
+
+# Using JWT Bearer token:
+curl -X POST https://content.diaradio.live/api/lifecycle/postair-archive \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Or run script directly (no auth needed):
+docker compose -f /srv/payload/docker-compose.yml exec -T dev-scripts sh -lc 'npx tsx scripts/cron/postair_archive_cleanup.ts'
 ```
 
 **Process**:

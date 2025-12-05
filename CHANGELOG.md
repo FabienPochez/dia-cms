@@ -17,6 +17,24 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-05] - Security: Authentication Added to Lifecycle API Endpoints
+
+### Security
+- **Lifecycle API Authentication** – Added authentication requirements to `/api/lifecycle/preair-rehydrate` and `/api/lifecycle/postair-archive` endpoints to prevent unauthorized remote code execution. These endpoints now require admin or staff role authentication via JWT token, API key, or session cookie. Location: `src/app/api/lifecycle/preair-rehydrate/route.ts`, `src/app/api/lifecycle/postair-archive/route.ts`
+  - **Vulnerability Fixed**: Previously unauthenticated endpoints that execute system commands via `exec()` were publicly accessible
+  - **Authentication**: Uses `checkScheduleAuth()` helper which supports Bearer tokens, API keys (`users API-Key <key>`), and session cookies
+  - **Response**: Returns 403 Forbidden with error message for unauthorized requests
+  - **Logging**: Authenticated user email and role are now logged for audit purposes
+  - **Impact**: Cron jobs continue to work as they run scripts directly (not via HTTP API). `noon_canary.sh` updated to include authentication headers.
+
+### Fixed
+- **Noon Canary Script** – Updated `scripts/cron/noon_canary.sh` to include authentication headers when calling `/api/lifecycle/preair-rehydrate` endpoint. The script now uses `PAYLOAD_API_KEY` from environment variables for authentication.
+
+### Changed
+- **Documentation** – Updated `README.md` to reflect actual cron job implementation (direct script execution) and added authentication examples for manual HTTP API calls.
+
+---
+
 ## [2025-12-02] - Planner Episode Fetch Limit Increase
 
 ### Changed

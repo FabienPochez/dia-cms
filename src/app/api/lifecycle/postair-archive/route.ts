@@ -9,12 +9,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { checkScheduleAuth } from '@/lib/auth/checkScheduleAuth'
 
 const execAsync = promisify(exec)
 
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    console.log('[POSTAIR_ARCHIVE_API] Manual trigger requested')
+    // Security: Require admin or staff authentication
+    const auth = await checkScheduleAuth(req)
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: auth.error || 'Unauthorized - admin/staff only',
+        },
+        { status: 403 },
+      )
+    }
+
+    console.log(
+      `[POSTAIR_ARCHIVE_API] Manual trigger requested by ${auth.user?.email} (${auth.user?.role})`,
+    )
 
     const { stdout, stderr } = await execAsync(
       'npx tsx /app/scripts/cron/postair_archive_cleanup.ts',

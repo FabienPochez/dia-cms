@@ -20,7 +20,7 @@ fi
 
 deterministic_status=$(curl -fsS -o /dev/null -w '%{http_code}' "${AUTH_ARGS[@]}" "${BASE_URL}/api/schedule/deterministic?lookahead=120&maxItems=4" || echo "ERR")
 admin_status=$(curl -fsS -o /dev/null -w '%{http_code}' "${BASE_URL}/admin" || echo "ERR")
-preair_status=$(curl -fsS -o /dev/null -w '%{http_code}' -X POST "${BASE_URL}/api/lifecycle/preair-rehydrate" || echo "ERR")
+preair_status=$(curl -fsS -o /dev/null -w '%{http_code}' -X POST "${AUTH_ARGS[@]}" "${BASE_URL}/api/lifecycle/preair-rehydrate" || echo "ERR")
 
 printf '%s | deterministic=%s admin=%s preair=%s\n' "$timestamp" "$deterministic_status" "$admin_status" "$preair_status" >> "$LOG_FILE"
 
