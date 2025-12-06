@@ -9,8 +9,8 @@
  * Rejects: shell metacharacters, backslashes, null bytes, etc.
  */
 export function isValidPath(path: string): boolean {
-  // Reject empty paths
-  if (!path || path.length === 0) {
+  // Reject non-string or empty paths
+  if (!path || typeof path !== 'string' || path.length === 0) {
     return false
   }
 
@@ -76,6 +76,11 @@ export function sanitizePath(path: string): string | null {
  * Validates a relative path (no leading slash, no parent directory traversal)
  */
 export function isValidRelativePath(path: string): boolean {
+  // Reject non-string or empty paths
+  if (!path || typeof path !== 'string') {
+    return false
+  }
+  
   if (!isValidPath(path)) {
     return false
   }
@@ -104,6 +109,11 @@ export function isValidRelativePath(path: string): boolean {
  * Prefer using parameterized queries or environment variables instead
  */
 export function escapeShellArg(path: string): string {
+  // Reject non-string paths
+  if (!path || typeof path !== 'string') {
+    throw new Error(`Invalid path: must be a string`)
+  }
+  
   // First validate
   if (!isValidPath(path)) {
     throw new Error(`Invalid path: ${path}`)

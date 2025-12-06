@@ -66,6 +66,8 @@ This changelog documents all significant changes to the Payload CMS backend serv
 - **Command Injection Vulnerabilities** – Fixed multiple command injection vulnerabilities in file path handling
 - **Missing Authentication** – Fixed missing authentication on `/api/lifecycle/rehydrate` endpoint
 - **Missing Rate Limiting** – Added rate limiting to prevent brute force attacks on lifecycle endpoints
+- **Path Validation Type Safety** – Added type checking to path sanitization functions to handle non-string inputs gracefully. Prevents runtime errors when validation functions receive undefined or null values. Location: `src/lib/utils/pathSanitizer.ts`
+- **Attacker IP Blocking** – Blocked additional attacker IP `23.132.164.54` at firewall level using iptables. All three known attacker IPs are now blocked: `193.34.213.150`, `216.158.232.43`, `23.132.164.54`
 
 ---
 
