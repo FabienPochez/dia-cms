@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { checkScheduleAuth } from '@/lib/auth/checkScheduleAuth'
 
 export const runtime = 'nodejs'
 
@@ -15,6 +16,17 @@ async function forward(
   params: RouteParams,
 ): Promise<NextResponse> {
   try {
+    // Security: Require admin or staff authentication for all requests
+    const auth = await checkScheduleAuth(request)
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          error: auth.error || 'Unauthorized - admin/staff only',
+        },
+        { status: 403 },
+      )
+    }
+
     // Check if writes are disabled for non-GET requests
     if (method !== 'GET' && process.env.PLANNER_LT_WRITE_ENABLED === 'false') {
       return NextResponse.json(

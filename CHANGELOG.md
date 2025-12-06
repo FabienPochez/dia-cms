@@ -17,6 +17,58 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-06] - Security: Comprehensive Security Hardening & Path Validation
+
+### Security
+- **Path Validation & Command Injection Prevention** – Added comprehensive path sanitization utilities to prevent command injection attacks. All file paths used in shell commands are now validated before execution. Location: `src/lib/utils/pathSanitizer.ts`
+  - **New Utilities**: `isValidPath()`, `isValidRelativePath()`, `sanitizePath()`, `escapeShellArg()`
+  - **Validation Rules**: Rejects shell metacharacters, directory traversal attempts, absolute paths (for relative path functions), and command substitution attempts
+  - **Allowed Characters**: Alphanumeric, forward slash, dash, underscore, dot, space
+
+- **Rsync Pull Path Validation** – Added path validation to `rsyncPull()` function to prevent command injection via archive or working directory paths. Location: `src/server/lib/rsyncPull.ts`
+  - **Validation**: Both `srcArchivePath` and `dstWorkingPath` are validated using `isValidRelativePath()`
+  - **Error Handling**: Throws `RsyncPullError` with code `E_INVALID_PATH` if validation fails
+  - **Shell Escaping**: Uses `escapeShellArg()` for additional safety when passing paths to shell scripts
+
+- **LibreTime Database Path Validation** – Added path validation to `updateLibreTimeFileExists()` and `updateLibreTimeFileExistsBatch()` functions to prevent SQL injection and command injection. Location: `src/server/lib/libretimeDb.ts`
+  - **Validation**: File paths are validated using `isValidPath()` before being used in SQL queries
+  - **SQL Escaping**: Single quotes are still escaped for SQL safety (double single quotes)
+  - **Error Handling**: Returns error if path contains dangerous characters
+
+- **Rehydrate API Endpoint Security** – Added authentication, rate limiting, and disable flag to `/api/lifecycle/rehydrate` endpoint. Location: `src/server/api/lifecycle/rehydrate.ts`
+  - **Authentication**: Requires admin or staff role via `checkScheduleAuth()`
+  - **Rate Limiting**: 10 requests per minute per IP address
+  - **Disable Flag**: Checks `ENABLE_DANGEROUS_ENDPOINTS` environment variable (default: disabled)
+
+- **Lifecycle API Rate Limiting** – Added rate limiting to all lifecycle API endpoints to prevent brute force attacks. Location: `src/app/api/lifecycle/preair-rehydrate/route.ts`, `src/app/api/lifecycle/postair-archive/route.ts`
+  - **Rate Limiter**: New in-memory rate limiter utility (`src/lib/utils/rateLimiter.ts`)
+  - **Limits**: 5-10 requests per minute per IP address (configurable per endpoint)
+  - **Response**: Returns 429 Too Many Requests with `Retry-After` header
+
+- **LibreTime Proxy Authentication** – Added authentication requirement to LibreTime API proxy endpoint. Location: `src/app/api/libretime/[...path]/route.ts`
+  - **Authentication**: All requests to LibreTime proxy now require admin or staff authentication
+  - **Impact**: Prevents unauthorized access to LibreTime API through Payload proxy
+
+- **Dangerous Endpoints Disable Flag** – Added `ENABLE_DANGEROUS_ENDPOINTS` environment variable to allow temporary disabling of dangerous endpoints during security incidents. Location: Multiple lifecycle endpoints
+  - **Default**: Endpoints are disabled by default (`ENABLE_DANGEROUS_ENDPOINTS=false`)
+  - **Response**: Returns 503 Service Unavailable when disabled
+  - **Usage**: Set `ENABLE_DANGEROUS_ENDPOINTS=true` in `.env` to enable endpoints
+
+### Added
+- **Path Sanitization Utilities** – New utility module for validating and sanitizing file paths. Location: `src/lib/utils/pathSanitizer.ts`
+- **Rate Limiting Utility** – New in-memory rate limiter for API endpoints. Location: `src/lib/utils/rateLimiter.ts`
+- **Security Documentation** – Comprehensive security audit and verification documentation. Locations: `docs/COMPREHENSIVE_SECURITY_AUDIT.md`, `docs/REHYDRATE_SCRIPT_VERIFICATION.md`, `docs/CRITICAL_VULNERABILITIES_FOUND.md`, `docs/SECURITY_FIXES_APPLIED.md`
+
+### Changed
+- **Environment Configuration** – Added `ENABLE_DANGEROUS_ENDPOINTS=false` to `.env` file to disable dangerous endpoints by default
+
+### Fixed
+- **Command Injection Vulnerabilities** – Fixed multiple command injection vulnerabilities in file path handling
+- **Missing Authentication** – Fixed missing authentication on `/api/lifecycle/rehydrate` endpoint
+- **Missing Rate Limiting** – Added rate limiting to prevent brute force attacks on lifecycle endpoints
+
+---
+
 ## [2025-12-05] - Security: Authentication Added to Lifecycle API Endpoints
 
 ### Security

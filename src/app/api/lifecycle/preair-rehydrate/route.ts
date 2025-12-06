@@ -12,11 +12,37 @@ import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { checkScheduleAuth } from '@/lib/auth/checkScheduleAuth'
+import { checkRateLimit, getClientIp } from '@/lib/utils/rateLimiter'
 
 const execAsync = promisify(exec)
 
 export async function POST(req: NextRequest) {
   try {
+    // Security: Rate limiting (5 requests per minute per IP)
+    const clientIp = getClientIp(req)
+    const rateLimit = checkRateLimit(`preair:${clientIp}`, 5, 60000)
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Rate limit exceeded',
+          retryAfter: rateLimit.retryAfter,
+        },
+        { status: 429 },
+      )
+    }
+
+    // Security: Check if dangerous endpoints are disabled
+    if (process.env.ENABLE_DANGEROUS_ENDPOINTS !== 'true') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Endpoint temporarily disabled for security',
+        },
+        { status: 503 },
+      )
+    }
+
     // Security: Require admin or staff authentication
     const auth = await checkScheduleAuth(req)
     if (!auth.authorized) {

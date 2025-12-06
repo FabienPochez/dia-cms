@@ -1,5 +1,6 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { isValidPath, escapeShellArg } from '../../lib/utils/pathSanitizer'
 
 const execAsync = promisify(exec)
 
@@ -17,9 +18,16 @@ export async function updateLibreTimeFileExists(
   exists: boolean,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Security: Validate filepath to prevent command injection
+    if (!isValidPath(filepath)) {
+      const errorMsg = `Invalid filepath: contains dangerous characters`
+      console.error(`❌ ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+
     const existsValue = exists ? 'true' : 'false'
 
-    // Escape single quotes in filepath
+    // Escape single quotes in filepath for SQL (double single quotes)
     const escapedPath = filepath.replace(/'/g, "''")
 
     // Try docker exec first (from host), fallback to psql (from container)
@@ -27,11 +35,15 @@ export async function updateLibreTimeFileExists(
     const isInsideContainer =
       process.env.HOSTNAME?.includes('payload') || process.env.CONTAINER === 'true'
 
+    // Security: Use escaped path in SQL query (already validated above)
+    // The escapedPath is safe for SQL (single quotes escaped), and filepath was validated
     if (isInsideContainer) {
       // Inside container: use psql directly with TCP connection
+      // Note: escapedPath is safe - validated and SQL-escaped
       command = `PGPASSWORD='${LIBRETIME_DB_PASSWORD}' psql -h ${LIBRETIME_DB_HOST} -U ${LIBRETIME_DB_USER} -d ${LIBRETIME_DB_NAME} -c "UPDATE cc_files SET file_exists = ${existsValue} WHERE filepath = '${escapedPath}';"`
     } else {
       // On host: use docker exec
+      // Note: escapedPath is safe - validated and SQL-escaped
       command = `docker exec -i libretime-postgres-1 psql -U ${LIBRETIME_DB_USER} -d ${LIBRETIME_DB_NAME} -c "UPDATE cc_files SET file_exists = ${existsValue} WHERE filepath = '${escapedPath}';"`
     }
 
@@ -65,9 +77,19 @@ export async function updateLibreTimeFileExistsBatch(
       return { success: true }
     }
 
+    // Security: Validate all filepaths before processing
+    for (const { filepath } of updates) {
+      if (!isValidPath(filepath)) {
+        const errorMsg = `Invalid filepath in batch update: contains dangerous characters`
+        console.error(`❌ ${errorMsg}`)
+        return { success: false, error: errorMsg }
+      }
+    }
+
     // Build a single SQL command for all updates
     const updateClauses = updates
       .map(({ filepath, exists }) => {
+        // Security: filepath already validated above
         const escapedPath = filepath.replace(/'/g, "''")
         const existsValue = exists ? 'true' : 'false'
         return `WHEN '${escapedPath}' THEN ${existsValue}`
@@ -76,6 +98,7 @@ export async function updateLibreTimeFileExistsBatch(
 
     const filepaths = updates
       .map(({ filepath }) => {
+        // Security: filepath already validated above
         const escapedPath = filepath.replace(/'/g, "''")
         return `'${escapedPath}'`
       })

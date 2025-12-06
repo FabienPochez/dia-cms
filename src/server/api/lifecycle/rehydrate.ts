@@ -8,9 +8,48 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { rehydrateEpisode } from '../../../../scripts/lifecycle/rehydrateEpisode'
+import { checkScheduleAuth } from '@/lib/auth/checkScheduleAuth'
+import { checkRateLimit, getClientIp } from '@/lib/utils/rateLimiter'
 
 export async function POST(req: NextRequest) {
   try {
+    // Security: Rate limiting (10 requests per minute per IP)
+    const clientIp = getClientIp(req)
+    const rateLimit = checkRateLimit(`rehydrate:${clientIp}`, 10, 60000)
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Rate limit exceeded',
+          retryAfter: rateLimit.retryAfter,
+        },
+        { status: 429 },
+      )
+    }
+
+    // Security: Check if dangerous endpoints are disabled
+    if (process.env.ENABLE_DANGEROUS_ENDPOINTS !== 'true') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Endpoint temporarily disabled for security',
+        },
+        { status: 503 },
+      )
+    }
+
+    // Security: Require admin or staff authentication
+    const auth = await checkScheduleAuth(req)
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: auth.error || 'Unauthorized - admin/staff only',
+        },
+        { status: 403 },
+      )
+    }
+
     // Parse request body
     const body = await req.json()
     const { episodeId, verify = false } = body
@@ -24,6 +63,10 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
+
+    console.log(
+      `[REHYDRATE_API] Rehydrate requested by ${auth.user?.email} (${auth.user?.role}) for episode ${episodeId}`,
+    )
 
     // Execute rehydration
     const result = await rehydrateEpisode({ episodeId, verify, dryRun: false })
@@ -70,5 +113,4 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Auth middleware will be handled by Next.js middleware pattern
-// For now, endpoint is open (add auth guard in production)
+// Security: Authentication required (admin/staff only)

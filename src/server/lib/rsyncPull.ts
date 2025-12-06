@@ -7,6 +7,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import fs from 'fs/promises'
 import path from 'path'
+import { isValidRelativePath, escapeShellArg } from '../../lib/utils/pathSanitizer'
 
 const execAsync = promisify(exec)
 
@@ -38,7 +39,22 @@ export async function rsyncPull(
 ): Promise<RsyncPullResult> {
   const startTime = Date.now()
 
-  // Build absolute paths
+  // Security: Validate paths to prevent command injection
+  if (!isValidRelativePath(srcArchivePath)) {
+    throw new RsyncPullError(
+      'E_INVALID_PATH',
+      `Invalid source archive path: contains dangerous characters or traversal attempts`,
+    )
+  }
+
+  if (!isValidRelativePath(dstWorkingPath)) {
+    throw new RsyncPullError(
+      'E_INVALID_PATH',
+      `Invalid destination working path: contains dangerous characters or traversal attempts`,
+    )
+  }
+
+  // Build absolute paths (paths are now validated as safe)
   const srcAbs = `bx-archive:/home/archive/${srcArchivePath}`
   const dstAbs = `/srv/media/${dstWorkingPath}`
 
@@ -57,8 +73,11 @@ export async function rsyncPull(
 
   // Call rsync_pull.sh script on HOST via docker exec
   // This is necessary because the container doesn't have SSH access to bx-archive
+  // Security: Paths are validated above, but use shell escaping for extra safety
   const scriptPath = `${process.cwd()}/scripts/sh/archive/rsync_pull.sh`
-  const hostCmd = `bash "${scriptPath}" "${srcArchivePath}" "${dstWorkingPath}"`
+  const escapedSrc = escapeShellArg(srcArchivePath)
+  const escapedDst = escapeShellArg(dstWorkingPath)
+  const hostCmd = `bash ${escapeShellArg(scriptPath)} ${escapedSrc} ${escapedDst}`
 
   // Execute rsync with retry logic
   const maxRetries = 2
