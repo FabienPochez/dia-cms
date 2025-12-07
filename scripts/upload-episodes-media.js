@@ -3,8 +3,11 @@ import path from 'path'
 import axios from 'axios'
 import FormData from 'form-data'
 
-const API_BASE_URL = 'http://172.18.0.4:3000/api'
-const API_KEY = 'Z7kR3pV9tXyLqF2sMbN8aC1eJhGdUwYo'
+const API_BASE_URL = process.env.PAYLOAD_API_URL || 'http://172.18.0.4:3000/api'
+const API_KEY = process.env.PAYLOAD_API_KEY || process.env.API_KEY || (() => {
+  console.error('❌ PAYLOAD_API_KEY or API_KEY environment variable is required')
+  process.exit(1)
+})()
 const TMP_DIR = '/srv/media/tmp'
 
 async function uploadFile(filePath, fileName) {

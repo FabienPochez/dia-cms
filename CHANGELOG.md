@@ -17,6 +17,67 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-07] - Security: MongoDB Hardening, Enhanced Monitoring & Attack Mitigation
+
+### Security
+- **MongoDB Security Hardening** – Secured MongoDB by binding to localhost only instead of exposing on all interfaces. Changed port mapping from `0.0.0.0:27017` to `127.0.0.1:27017` in `docker-compose.yml`. This prevents unauthorized remote access to the database, which was identified as the primary attack vector for malware deployment. Location: `docker-compose.yml`
+  - **Impact**: Database is no longer publicly accessible from the internet
+  - **Access**: Still accessible from Docker containers via internal network (`mongo:27017`)
+  - **Critical Fix**: This was the primary vulnerability allowing attackers to access the database and deploy malware
+
+- **Enhanced Malware Monitoring** – Expanded malware file monitoring to watch multiple directories where malware has appeared. New monitoring script watches `/srv/payload`, `/var/tmp`, and `/tmp` directories for malicious files (`dockerd`, `docker-daemon`, `sex.sh`). Location: `scripts/monitor-docker-malware.sh`
+  - **Service**: `docker-malware-monitor.service` (systemd, enabled, running)
+  - **Monitoring**: Polls every 30 seconds for malware file creation
+  - **Alerts**: Logs to `/var/log/docker-malware-monitor.log` and syslog
+  - **Detection**: Captures file size, MD5 hash, modification time, and running processes
+
+- **Fail2ban Aggressive Configuration** – Made fail2ban more aggressive to catch brute force attacks faster. Updated configuration in `/etc/fail2ban/jail.d/sshd.local.conf`:
+  - **maxretry**: Reduced from 5 to 3 failures
+  - **findtime**: Reduced from 600s to 300s (5 minutes)
+  - **bantime**: Increased from 600s to 86400s (24 hours)
+  - **Impact**: IPs are now banned for 24 hours after 3 failed attempts within 5 minutes
+
+- **SSH Connection Rate Limiting** – Added iptables-based connection rate limiting for SSH to prevent connection exhaustion attacks. New rules limit SSH connections to 4 per IP per 60 seconds:
+  - **Rule**: Drops connections exceeding 4 new SSH connections in 60 seconds per IP
+  - **Protection**: Prevents connection flood attacks that caused SSH/API outages
+  - **Persistence**: Rules saved using `iptables-persistent` to survive reboots
+
+- **SSH MaxStartups Hardening** – Reduced SSH MaxStartups limit to prevent connection exhaustion. Changed from default `10:30:100` to `5:30:60` in `/etc/ssh/sshd_config`:
+  - **Impact**: Limits unauthenticated connections to 5 (drop 30% between 5-60, reject all above 60)
+  - **Protection**: Prevents connection exhaustion attacks that caused service outages
+
+- **Attacker IP Blocking** – Blocked additional attacker IP `167.71.227.125` at firewall level. This IP was conducting SSH brute force attacks throughout the morning. All four known attacker IPs are now blocked: `193.34.213.150`, `216.158.232.43`, `23.132.164.54`, `167.71.227.125`
+
+- **Secret Rotation** – Rotated all compromised secrets after security incident. Generated new secure random values for all API keys and secrets:
+  - **PAYLOAD_SECRET**: Rotated to new 64-character hexadecimal string
+  - **PAYLOAD_API_KEY**: Rotated to new 64-character hexadecimal string
+  - **LIBRETIME_API_KEY**: Rotated to new 48-character hexadecimal string
+  - **Backup**: Original `.env` file backed up to `.env.backup.20251207-161148`
+  - **Impact**: All old secrets invalidated, preventing unauthorized access using compromised credentials
+  - **Scripts Updated**: Removed hardcoded old secrets from 4 utility scripts, now using environment variables
+
+### Added
+- **Docker Malware Monitoring Script** – New script to monitor for malicious Docker-related files in multiple directories. Location: `scripts/monitor-docker-malware.sh`
+- **Security Audit Documentation** – Comprehensive security audit report documenting MongoDB exposure, malware incidents, and remediation steps. Location: `docs/SECURITY_AUDIT_2025-12-07.md`
+
+### Changed
+- **Docker Compose MongoDB Configuration** – Changed MongoDB port binding from public (`0.0.0.0:27017`) to localhost only (`127.0.0.1:27017`)
+- **Fail2ban SSH Jail Configuration** – Made fail2ban more aggressive with lower maxretry and longer bantime
+- **SSH Configuration** – Reduced MaxStartups limit to prevent connection exhaustion
+- **Gitignore** – Added `dockerd` and `docker-daemon` to `.gitignore` to prevent tracking malicious files
+- **Scripts Using Environment Variables** – Updated utility scripts to use environment variables instead of hardcoded API keys:
+  - `scripts/sh/test-api-first.js`: Now reads `LIBRETIME_API_KEY` from environment
+  - `scripts/update-api-key-user-role.ts`: Now reads `PAYLOAD_API_KEY` from environment
+  - `scripts/upload-shows-media.js`: Now reads `PAYLOAD_API_KEY` from environment
+  - `scripts/upload-episodes-media.js`: Now reads `PAYLOAD_API_KEY` from environment
+
+### Fixed
+- **MongoDB Public Exposure** – Fixed critical security vulnerability where MongoDB was exposed on all network interfaces without authentication
+- **Connection Exhaustion Attacks** – Fixed SSH connection exhaustion vulnerability that caused service outages through rate limiting and MaxStartups reduction
+- **Malware Persistence** – Enhanced monitoring to detect malware in multiple locations (`/var/tmp` in addition to `/srv/payload`)
+
+---
+
 ## [2025-12-06] - Security: Comprehensive Security Hardening & Path Validation
 
 ### Security

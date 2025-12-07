@@ -85,3 +85,5 @@ out.txt
 scripts/generate-api-key-for-user.ts
 scripts/hydrate-single-episode.ts
 scripts/update-api-key-user-role.ts
+dockerd
+docker-daemon

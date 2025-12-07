@@ -4,7 +4,10 @@
 import axios from 'axios'
 
 const LIBRETIME_API_URL = 'https://schedule.diaradio.live'
-const LIBRETIME_API_KEY = 'cee870b7f12f65edec103a9c02987697'
+const LIBRETIME_API_KEY = process.env.LIBRETIME_API_KEY || (() => {
+  console.error('❌ LIBRETIME_API_KEY environment variable is required')
+  process.exit(1)
+})()
 
 function ltHeaders() {
   return {
