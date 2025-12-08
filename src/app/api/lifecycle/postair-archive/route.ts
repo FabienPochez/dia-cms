@@ -57,10 +57,13 @@ export async function POST(req: NextRequest) {
       `[POSTAIR_ARCHIVE_API] Manual trigger requested by ${auth.user?.email} (${auth.user?.role})`,
     )
 
+    // Execute the post-air archive script via ephemeral jobs container
+    // This runs the same script that Cron B runs every 10 minutes
     const { stdout, stderr } = await execAsync(
-      'npx tsx /app/scripts/cron/postair_archive_cleanup.ts',
+      'docker compose -f /srv/payload/docker-compose.yml run --rm jobs sh -lc "npx tsx scripts/cron/postair_archive_cleanup.ts"',
       {
         timeout: 300000, // 5 minute timeout
+        cwd: '/srv/payload',
         env: {
           ...process.env,
           NODE_ENV: process.env.NODE_ENV || 'production',

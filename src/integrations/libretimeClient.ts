@@ -155,6 +155,7 @@ export class LibreTimeClient {
 
   constructor() {
     // Use server-side environment variables
+    // Prefer internal Docker network URL for better reliability
     this.baseUrl =
       process.env.LIBRETIME_API_URL || process.env.LIBRETIME_BASE_URL || 'http://api:9001'
     this.apiKey = process.env.LIBRETIME_API_KEY || 'test-key'
@@ -162,6 +163,9 @@ export class LibreTimeClient {
     if (!this.apiKey) {
       console.warn('[LT] LIBRETIME_API_KEY not set, using test-key')
     }
+    
+    // Log which URL we're using for debugging
+    console.log(`[LT] Using baseUrl: ${this.baseUrl}`)
   }
 
   /**
@@ -169,6 +173,7 @@ export class LibreTimeClient {
    */
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}/api/v2${path}`
+    console.log(`[LT] Request URL: ${url}, API Key: ${this.apiKey ? this.apiKey.substring(0, 10) + '...' : 'MISSING'}`)
 
     const requestOptions: RequestInit = {
       ...options,

@@ -345,16 +345,16 @@ The `rename-media-in-place.ts` script normalizes archived media files to canonic
 
 ```bash
 # Inside the dev-scripts container
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks'
 
 # Dry-run (preview changes without applying)
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --dry-run'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --dry-run'
 
 # With limit (process only first N files)
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --limit 5'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --limit 5'
 
 # With mapping file (for files without track_id pattern)
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --map /path/to/mapping.json'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --map /path/to/mapping.json'
 ```
 
 **Parameters:**
@@ -408,13 +408,13 @@ The `import-batch-archives-media.ts` script uploads pre-sanitized archive media 
 
 ```bash
 # Inside the dev-scripts container
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/import-batch-archives-media.ts'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/import-batch-archives-media.ts'
 
 # Dry-run (preview without making changes)
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/import-batch-archives-media.ts --dry-run'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/import-batch-archives-media.ts --dry-run'
 
 # With custom LibreTime URL
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/import-batch-archives-media.ts --libretime-url http://localhost:8080'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/import-batch-archives-media.ts --libretime-url http://localhost:8080'
 ```
 
 **Parameters:**
@@ -686,8 +686,8 @@ Complete workflow for archiving media files to Hetzner Storage Box and hydrating
 1. **Prepare Files** (Batch of ~100)
    ```bash
    # Normalize filenames and sanitize ID3 tags
-   docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --dry-run'
-   docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks'
+   docker compose run --rm jobs sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --dry-run'
+   docker compose run --rm jobs sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks'
    ```
 
 2. **Import to LibreTime**
@@ -708,7 +708,7 @@ Complete workflow for archiving media files to Hetzner Storage Box and hydrating
 2-bis. **Hydrate Payload with LibreTime Data**
    ```bash
    # Re-run import script to poll LibreTime and hydrate Payload
-   docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/import-batch-archives-media.ts'
+   docker compose run --rm jobs sh -lc 'npx tsx scripts/import-batch-archives-media.ts'
    ```
    
    This step:
@@ -742,8 +742,8 @@ Complete workflow for archiving media files to Hetzner Storage Box and hydrating
 4. **Hydrate Payload with Archive Paths** (TypeScript)
    ```bash
    # Update Payload episodes with archive file paths + LibreTime safety check
-   docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/hydrate-archive-paths.ts --log /srv/media/logs/rsync-archive-success.jsonl --dry-run'
-   docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/hydrate-archive-paths.ts --log /srv/media/logs/rsync-archive-success.jsonl'
+   docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-archive-paths.ts --log /srv/media/logs/rsync-archive-success.jsonl --dry-run'
+   docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-archive-paths.ts --log /srv/media/logs/rsync-archive-success.jsonl'
    ```
    
    **🛡️  SAFETY FEATURE**: This step includes automatic LibreTime field verification:
@@ -755,8 +755,8 @@ Complete workflow for archiving media files to Hetzner Storage Box and hydrating
 5. **Cleanup Local Files** (TypeScript)
    ```bash
    # Remove successfully transferred files from local storage (recursively searches subdirectories)
-   docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/cleanup-imported-files.ts --log /srv/media/logs/rsync-archive-success.jsonl --dry-run'
-   docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/cleanup-imported-files.ts --log /srv/media/logs/rsync-archive-success.jsonl'
+   docker compose run --rm jobs sh -lc 'npx tsx scripts/cleanup-imported-files.ts --log /srv/media/logs/rsync-archive-success.jsonl --dry-run'
+   docker compose run --rm jobs sh -lc 'npx tsx scripts/cleanup-imported-files.ts --log /srv/media/logs/rsync-archive-success.jsonl'
    ```
 
 ### Script Details
@@ -1016,8 +1016,8 @@ ARCHIVE_CURRENT=$(wc -l < /srv/media/logs/rsync-archive-success.jsonl 2>/dev/nul
 echo "Batch: $BATCH_SIZE | LibreTime: $LT_CURRENT → $((LT_CURRENT + BATCH_SIZE)) | Archive: $ARCHIVE_CURRENT → $((ARCHIVE_CURRENT + BATCH_SIZE))"
 
 # STEP 1: Prepare Files (dry-run first, then apply)
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --dry-run'
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks --dry-run'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/rename-media-in-place.ts --root /srv/media/tracks'
 
 # STEP 2: Import to LibreTime (run from HOST - requires docker command)
 npx tsx scripts/import-batch-archives-media.ts
@@ -1031,7 +1031,7 @@ while true; do
 done
 
 # STEP 2-bis: Hydrate Payload with LibreTime Data
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/import-batch-archives-media.ts'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/import-batch-archives-media.ts'
 
 # VERIFY Step 2-bis: Check random episodes for LibreTime fields
 curl -s "https://content.diaradio.live/api/episodes/FIRST_EPISODE_ID?depth=0" -H "Authorization: users API-Key $PAYLOAD_API_KEY" | jq '{libretimeTrackId, libretimeFilepathRelative}'
@@ -1046,15 +1046,15 @@ ARCHIVE_COUNT=$(ssh bx-archive "ls /home/archive/legacy/*.mp3" | wc -l)
 echo "Archive server total: $ARCHIVE_COUNT (should be $((ARCHIVE_CURRENT + BATCH_SIZE)))"
 
 # STEP 4: Hydrate Payload with Archive Paths (dry-run first, then apply)
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/hydrate-archive-paths.ts --log /srv/media/logs/rsync-archive-success.jsonl --dry-run'
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/hydrate-archive-paths.ts --log /srv/media/logs/rsync-archive-success.jsonl'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-archive-paths.ts --log /srv/media/logs/rsync-archive-success.jsonl --dry-run'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-archive-paths.ts --log /srv/media/logs/rsync-archive-success.jsonl'
 
 # VERIFY Step 4: Check random episodes for ALL fields
 curl -s "https://content.diaradio.live/api/episodes/FIRST_EPISODE_ID?depth=0" -H "Authorization: users API-Key $PAYLOAD_API_KEY" | jq '{libretimeTrackId, libretimeFilepathRelative, hasArchiveFile, archiveFilePath}'
 
 # STEP 5: Cleanup Local Files (dry-run first, then apply)
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/cleanup-imported-files.ts --log /srv/media/logs/rsync-archive-success.jsonl --dry-run'
-docker exec payload-dev-scripts-1 sh -lc 'npx tsx scripts/cleanup-imported-files.ts --log /srv/media/logs/rsync-archive-success.jsonl'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/cleanup-imported-files.ts --log /srv/media/logs/rsync-archive-success.jsonl --dry-run'
+docker compose run --rm jobs sh -lc 'npx tsx scripts/cleanup-imported-files.ts --log /srv/media/logs/rsync-archive-success.jsonl'
 
 # VERIFY Step 5: Should show 0 files
 find /srv/media/imported/1 -type f -name "*.mp3" | wc -l
@@ -1248,11 +1248,11 @@ TZ=Europe/Paris
 
 # Pre-air (every 15m, offset) — prevent overlap with flock
 # Note: Runs script directly (not via HTTP API) - no authentication needed
-*/15 * * * * /usr/bin/flock -n /tmp/dia-preair.lock docker compose -f /srv/payload/docker-compose.yml exec -T dev-scripts sh -lc 'npx tsx scripts/cron/preair_rehydrate.ts' >> /var/log/dia-cron/preair-rehydrate.log 2>&1
+*/15 * * * * /usr/bin/flock -n /tmp/dia-preair.lock docker compose -f /srv/payload/docker-compose.yml run --rm jobs sh -lc 'npx tsx scripts/cron/preair_rehydrate.ts' >> /var/log/dia-cron/preair-rehydrate.log 2>&1
 
 # Post-air (every 10m, offset) — prevent overlap with flock
 # Note: Runs script directly (not via HTTP API) - no authentication needed
-*/10 * * * * /usr/bin/flock -n /tmp/dia-postair.lock docker compose -f /srv/payload/docker-compose.yml exec -T dev-scripts sh -lc 'npx tsx scripts/cron/postair_archive_cleanup.ts' >> /var/log/dia-cron/postair-archive.log 2>&1
+*/10 * * * * /usr/bin/flock -n /tmp/dia-postair.lock docker compose -f /srv/payload/docker-compose.yml run --rm jobs sh -lc 'npx tsx scripts/cron/postair_archive_cleanup.ts' >> /var/log/dia-cron/postair-archive.log 2>&1
 
 # File exists check (daily at 3 AM) — prevent playout errors from missing files
 0 3 * * * /usr/bin/flock -n /tmp/dia-filecheck.lock /srv/payload/scripts/fix-libretime-file-exists.sh >> /var/log/dia-cron/file-exists-check.log 2>&1
@@ -1268,7 +1268,7 @@ TZ=Europe/Paris
 ```
 
 **Key Features**:
-- ✅ Uses `docker compose exec` with service name (immune to container restarts)
+- ✅ Uses `docker compose run --rm jobs` (ephemeral containers, auto-cleanup)
 - ✅ `flock` prevents overlapping runs if a job takes longer than the interval
 - ✅ Timezone set to `Europe/Paris` for proper scheduling
 - ✅ Separate logs for each cron job
@@ -1326,7 +1326,7 @@ curl -X POST https://content.diaradio.live/api/lifecycle/postair-archive \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 
 # Or run script directly (no auth needed):
-docker compose -f /srv/payload/docker-compose.yml exec -T dev-scripts sh -lc 'npx tsx scripts/cron/postair_archive_cleanup.ts'
+docker compose -f /srv/payload/docker-compose.yml run --rm jobs sh -lc 'npx tsx scripts/cron/postair_archive_cleanup.ts'
 ```
 
 **Process**:

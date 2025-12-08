@@ -187,11 +187,22 @@ const PlannerViewWithLibreTime: React.FC = () => {
     setIsLoading(true)
 
     try {
-      // Get episode data to find libretimeTrackId
-      const episodeResponse = await fetch(`/api/episodes/${episodeId}`)
-      if (!episodeResponse.ok) {
-        throw new Error('Failed to fetch episode data')
+      // Get episode data to find libretimeTrackId (with retry on 429)
+      const fetchEpisodeWithRetry = async (retryCount = 0): Promise<Response> => {
+        const response = await fetch(`/api/episodes/${episodeId}`)
+        if (response.status === 429 && retryCount < 1) {
+          const retryAfter = response.headers.get('Retry-After')
+          const retryMs = retryAfter ? parseInt(retryAfter) * 1000 : 2000
+          console.warn(`[PLANNER] Rate limited (429) fetching episode, retrying after ${retryMs}ms`)
+          await new Promise((resolve) => setTimeout(resolve, retryMs))
+          return fetchEpisodeWithRetry(retryCount + 1)
+        }
+        if (!response.ok) {
+          throw new Error(`Failed to fetch episode data: ${response.status} ${response.statusText}`)
+        }
+        return response
       }
+      const episodeResponse = await fetchEpisodeWithRetry()
 
       const episodeData = await episodeResponse.json()
       const libretimeTrackId = episodeData.libretimeTrackId

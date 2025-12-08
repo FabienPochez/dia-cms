@@ -59,15 +59,19 @@ export async function POST(req: NextRequest) {
       `[PREAIR_REHYDRATE_API] Manual trigger requested by ${auth.user?.email} (${auth.user?.role})`,
     )
 
-    // Execute the pre-air rehydrate script
+    // Execute the pre-air rehydrate script via ephemeral jobs container
     // This runs the same script that Cron A runs every 15 minutes
-    const { stdout, stderr } = await execAsync('npx tsx /app/scripts/cron/preair_rehydrate.ts', {
-      timeout: 300000, // 5 minute timeout
-      env: {
-        ...process.env,
-        NODE_ENV: process.env.NODE_ENV || 'production',
+    const { stdout, stderr } = await execAsync(
+      'docker compose -f /srv/payload/docker-compose.yml run --rm jobs sh -lc "npx tsx scripts/cron/preair_rehydrate.ts"',
+      {
+        timeout: 300000, // 5 minute timeout
+        cwd: '/srv/payload',
+        env: {
+          ...process.env,
+          NODE_ENV: process.env.NODE_ENV || 'production',
+        },
       },
-    })
+    )
 
     // Parse the output to extract results
     const output = stdout + stderr

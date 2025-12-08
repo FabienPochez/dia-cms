@@ -84,20 +84,20 @@ const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
     refetchRef.current = refetch
   }, [refetch])
 
-  // Debounced refetch after scheduling events (3 seconds)
+  // Debounced refetch after scheduling events (5 seconds to avoid rate limits)
   const scheduleRefetch = useCallback((reason: string) => {
     // Clear any pending refetch
     if (refetchTimeoutRef.current) {
       clearTimeout(refetchTimeoutRef.current)
     }
 
-    console.info('[palette.refetch.scheduled]', { reason, willRefetchIn: '3s' })
+    console.info('[palette.refetch.scheduled]', { reason, willRefetchIn: '5s' })
 
-    // Schedule new refetch
+    // Schedule new refetch with longer delay to avoid rate limits
     refetchTimeoutRef.current = setTimeout(() => {
       console.info('[palette.refetch.executing]', { reason })
       refetchRef.current()
-    }, 3000) // 3 seconds debounce - increase to 5000 if backend is slow
+    }, 5000) // 5 seconds debounce - increased to avoid 429 rate limit errors
   }, []) // Empty deps - stable callback
 
   // Subscribe to planner bus events (only once on mount)
@@ -505,19 +505,26 @@ const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
 
                         try {
                           console.log('[EventPalette] Play button clicked for episode:', episode.episodeId)
-                          // Fetch full episode data with depth=1 to populate media relationship
-                          const response = await fetch(`/api/episodes/${episode.episodeId}?depth=1`, {
-                            method: 'GET',
-                            credentials: 'include',
-                            headers: {
-                              'Content-Type': 'application/json',
-                            },
-                          })
-
-                          if (!response.ok) {
-                            throw new Error(`Failed to fetch episode: ${response.status}`)
+                          // Fetch full episode data with depth=1 to populate media relationship (with retry on 429)
+                          const fetchEpisodeWithRetry = async (retryCount = 0): Promise<Response> => {
+                            const response = await fetch(`/api/episodes/${episode.episodeId}?depth=1`, {
+                              method: 'GET',
+                              credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' },
+                            })
+                            if (response.status === 429 && retryCount < 1) {
+                              const retryAfter = response.headers.get('Retry-After')
+                              const retryMs = retryAfter ? parseInt(retryAfter) * 1000 : 2000
+                              console.warn(`[EventPalette] Rate limited (429), retrying after ${retryMs}ms`)
+                              await new Promise((resolve) => setTimeout(resolve, retryMs))
+                              return fetchEpisodeWithRetry(retryCount + 1)
+                            }
+                            if (!response.ok) {
+                              throw new Error(`Failed to fetch episode: ${response.status}`)
+                            }
+                            return response
                           }
-
+                          const response = await fetchEpisodeWithRetry()
                           const episodeData = await response.json()
                           console.log('[EventPalette] Episode data fetched:', {
                             id: episodeData.id,

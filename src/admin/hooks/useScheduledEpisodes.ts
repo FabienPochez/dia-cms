@@ -32,19 +32,32 @@ export const useScheduledEpisodes = (): UseScheduledEpisodesReturn => {
         depth: '1', // Include show data to get libretimeInstanceId
       })
 
-      const response = await fetch(`/api/episodes?${params.toString()}`, {
-        method: 'GET',
-        credentials: 'include', // Include cookies for authentication
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
+      // Helper function to fetch with retry on 429
+      const fetchWithRetry = async (retryCount = 0): Promise<Response> => {
+        const response = await fetch(`/api/episodes?${params.toString()}`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        })
 
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch scheduled episodes: ${response.status} ${response.statusText}`,
-        )
+        if (response.status === 429 && retryCount < 1) {
+          const retryAfter = response.headers.get('Retry-After')
+          const retryMs = retryAfter ? parseInt(retryAfter) * 1000 : 5000
+          console.warn(`[useScheduledEpisodes] Rate limited (429), retrying after ${retryMs}ms`)
+          await new Promise((resolve) => setTimeout(resolve, retryMs))
+          return fetchWithRetry(retryCount + 1)
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch scheduled episodes: ${response.status} ${response.statusText}`,
+          )
+        }
+
+        return response
       }
+
+      const response = await fetchWithRetry()
 
       const data = await response.json()
 

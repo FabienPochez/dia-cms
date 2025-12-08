@@ -17,6 +17,50 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-08] - Fix: LibreTime Authentication & Planner Rate Limit Handling
+
+### Fixed
+- **LibreTime API Authentication** – Fixed authentication failures in planner sync button by correcting API key mismatch. Updated `LIBRETIME_API_KEY` in `.env` to match LibreTime configuration (`cee870b7f12f65edec103a9c02987697`). Location: `.env`
+  - **Root Cause**: API key in Payload `.env` did not match LibreTime config
+  - **Impact**: Sync button and LibreTime API calls now authenticate successfully
+  - **Verification**: Created test scripts to verify authentication with both internal and external URLs
+
+- **Planner Rate Limit Handling** – Added automatic retry logic and increased debounce time to handle 429 (Too Many Requests) errors gracefully. The planner was hitting rate limits (likely from Cloudflare) when making multiple episode queries. Location: `src/admin/hooks/useUnscheduledEpisodes.ts`, `src/admin/hooks/useScheduledEpisodes.ts`, `src/admin/components/EventPalette.tsx`, `src/admin/components/PlannerViewWithLibreTime.tsx`
+  - **Retry Logic**: All episode fetch calls now automatically retry once on 429 errors, respecting `Retry-After` header
+  - **Debounce Increase**: Increased refetch debounce from 3s to 5s to reduce request frequency
+  - **Error Handling**: Better error messages and graceful degradation when rate limited
+  - **Note**: 429 errors are likely from Cloudflare rate limiting, not our security code (which only applies to `/api/lifecycle/*` endpoints)
+
+### Added
+- **LibreTime Authentication Test Scripts** – Created test scripts to verify LibreTime API authentication. Location: `scripts/test-lt-auth.ts`, `scripts/test-schedule-auth.ts`
+  - Tests both internal Docker network URLs and external HTTPS URLs
+  - Verifies API key authentication and endpoint accessibility
+  - Helps diagnose authentication issues
+
+### Changed
+- **LibreTime Client Debug Logging** – Added debug logging to LibreTime client to log API URL and API key prefix for troubleshooting. Location: `src/integrations/libretimeClient.ts`
+
+---
+
+## [2025-12-08] - Security: Migrate to Ephemeral Jobs Pattern
+
+### Security
+- **Ephemeral Jobs Service** – Replaced vulnerable `dev-scripts` long-lived container with secure ephemeral `jobs` service. New service uses Alpine-based image, read-only repository mounts, no docker.sock access, and runs on-demand only.
+  - **New Service**: `jobs` service in docker-compose.yml
+  - **Pattern**: `docker compose run --rm jobs` (ephemeral, auto-cleanup)
+  - **Security**: Read-only repository mount, no docker.sock, non-root user
+  - **Performance**: Reuses existing `node_modules` volume (faster startup)
+
+### Changed 
+- **Cron Jobs** – Updated preair_rehydrate and postair_archive_cleanup cron jobs to use ephemeral `jobs` service instead of long-lived `dev-scripts` container
+- **Development Workflow** – Replaced `docker exec payload-dev-scripts-1` with `docker compose run --rm jobs` for interactive development
+- **README.md** – Updated all script execution examples to use ephemeral jobs pattern
+
+### Removed
+- **dev-scripts Container** – Removed vulnerable long-lived container that had full write access to repository and was identified as attack vector
+
+---
+
 ## [2025-12-08] - Security: dev-scripts Container Hardening & Incident Response Documentation
 
 ### Security
