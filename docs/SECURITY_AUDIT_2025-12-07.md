@@ -58,8 +58,21 @@ mongo:
 
 ### Users Updated Today (2025-12-07)
 - **1 staff user**: `jb.gervais@hotmail.fr` (updated 15:11:16 UTC)
-  - ⚠️ Updated AFTER malware appeared (15:06-15:07) but BEFORE MongoDB secured (16:00)
-  - ⚠️ **REVIEW NEEDED** - Verify this update was legitimate
+  - **Update Type**: User login (legitimate)
+  - **Evidence from Nginx logs**:
+    - `15:11:13` - GET `/api/users?where[email][equals]=jb.gervais@hotmail.fr` (user lookup)
+    - `15:11:16` - POST `/api/users/login` (login request)
+    - **IP**: `162.158.22.198/199` (legitimate user IP)
+    - **User-Agent**: Chrome on macOS (legitimate browser)
+  - **Database Changes**:
+    - New session created: `97d4f8a6-a8eb-478d-8ae6-401953f1d470`
+    - Session expires: `2026-02-05 15:11:16` (60 days, normal token expiration)
+    - `updatedAt` timestamp updated (normal on login)
+    - No password change (hash unchanged)
+    - No role change (still `staff`)
+    - No API key changes
+  - **Timing**: Updated 4-5 minutes after malware appeared (15:06-15:07), but BEFORE MongoDB secured (16:00)
+  - **Assessment**: ✅ **LIKELY LEGITIMATE** - Normal login behavior, but verify with user that they logged in at this time
 
 ### Suspicious Users
 - ✅ **No suspicious users found** (no test/admin/root/hack/malware/attacker emails)

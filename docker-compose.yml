@@ -95,15 +95,19 @@ services:
     image: node:18
     restart: unless-stopped
     working_dir: /app
+    # SECURITY: Run as non-root user (UID 1000, GID 1000)
+    user: "1000:1000"
     volumes:
       - .:/app
       - /srv/media:/srv/media
-      - /root/.ssh:/root/.ssh:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      # SECURITY: Removed docker.sock mount - not needed and was a critical security risk
+      # SECURITY: Removed /root/.ssh mount - not needed if running as non-root
+      # Note: SSH keys should be managed differently if rsync needs them
     command: 
       - sh
       - -c
-      - "apt-get update -qq && apt-get install -y -qq rsync docker.io postgresql-client > /dev/null 2>&1 && tail -f /dev/null"
+      # SECURITY: Install only what's needed (removed docker.io)
+      - "apt-get update -qq && apt-get install -y -qq rsync postgresql-client > /dev/null 2>&1 && tail -f /dev/null"
     env_file:
       - .env
     networks:

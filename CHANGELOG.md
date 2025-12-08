@@ -17,6 +17,59 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-08] - Security: dev-scripts Container Hardening & Incident Response Documentation
+
+### Security
+- **dev-scripts Container Security Hardening** – Secured the `dev-scripts` container by removing critical security vulnerabilities. Location: `docker-compose.yml`
+  - **Removed Docker Socket Mount**: Removed `/var/run/docker.sock` mount which was a critical security risk allowing full Docker control from inside the container. The container doesn't need Docker access - scripts don't use Docker directly.
+  - **Non-Root User**: Changed container to run as non-root user (`user: "1000:1000"`) instead of root, preventing host filesystem modification.
+  - **Removed SSH Mount**: Removed `/root/.ssh` mount as it's not needed when running as non-root user.
+  - **Removed Docker Package**: Removed `docker.io` from apt-get install command as it's no longer needed.
+  - **Impact**: Container can no longer escape to host or control Docker daemon, significantly reducing attack surface.
+
+- **Enhanced Malware Monitoring** – Expanded malware detection capabilities in monitoring script. Location: `scripts/monitor-docker-malware.sh`
+  - **Additional Monitoring Directory**: Added `/root` to monitored directories
+  - **Additional Malware Files**: Added `javs` to malware file detection list
+  - **Process Monitoring**: Added comprehensive process monitoring for malware types (`javs`, `xmrig`, `miner`, `crypto`)
+  - **Enhanced Detection**: Now monitors both files and running processes for better threat detection
+
+### Added
+- **Incident Response Report** – Comprehensive incident response report documenting malware persistence, container compromise, and containment actions. Location: `docs/INCIDENT_RESPONSE_REPORT_2025-12-07.md`
+  - Documents the `hash` miner malware incident
+  - Details attack vectors (MongoDB exposure, container escape via dev-scripts)
+  - Records immediate containment actions (stopping container, blocking mining pools, blocking Docker traffic)
+  - Provides recommendations for securing the container
+
+- **Monday Morning Security Check Report** – Security status report after overnight monitoring. Location: `docs/MONDAY_MORNING_SECURITY_CHECK_2025-12-08.md`
+  - Confirms system remained clean for ~12 hours after stopping dev-scripts container
+  - Analyzes all monitoring logs showing no malware reappearance
+  - Validates that stopping dev-scripts container successfully stopped the malware
+
+- **Monitoring Alert Analysis Report** – Analysis of monitoring alerts showing all were false positives. Location: `docs/MONITORING_ALERT_REPORT_2025-12-07.md`
+  - Documents 225 alerts from active threat monitoring session
+  - Confirms all alerts were false positives from monitoring tools themselves
+  - Validates system is clean with no actual threats
+
+- **Active Threat Monitoring Script** – Comprehensive monitoring script for detecting malware reappearance and persistence mechanisms. Location: `scripts/monitor-active-threats.sh`
+  - Monitors for malware files, processes, and network connections
+  - Checks multiple directories and mining pool connections
+  - Provides detailed logging and alerting
+  - Note: This script was created for temporary intensive monitoring and has been deactivated in favor of lighter-weight file-based monitoring
+
+- **Monitoring Status Check Script** – Utility script to quickly check the status of active threat monitoring. Location: `scripts/check-monitoring-status.sh`
+  - Shows if monitoring is running
+  - Displays recent log entries and alerts
+  - Provides quick status overview
+
+### Changed
+- **Docker Compose dev-scripts Configuration** – Secured container by removing dangerous mounts and running as non-root user
+- **Malware Monitoring Script** – Enhanced to detect more malware types and monitor additional directories and processes
+
+### Fixed
+- **Container Escape Vulnerability** – Fixed critical security vulnerability where dev-scripts container had Docker socket access allowing container escape and host compromise
+
+---
+
 ## [2025-12-07] - Security: MongoDB Hardening, Enhanced Monitoring & Attack Mitigation
 
 ### Security
