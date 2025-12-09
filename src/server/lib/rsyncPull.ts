@@ -10,6 +10,7 @@ import path from 'path'
 import { isValidRelativePath, escapeShellArg } from '../../lib/utils/pathSanitizer'
 
 const execAsync = promisify(exec)
+// Note: execAsync is only used for host-side execution (when not in container)
 
 export interface RsyncPullResult {
   bytes: number
@@ -71,9 +72,56 @@ export async function rsyncPull(
     // File doesn't exist, proceed with copy
   }
 
-  // Call rsync_pull.sh script on HOST via docker exec
-  // This is necessary because the container doesn't have SSH access to bx-archive
-  // Security: Paths are validated above, but use shell escaping for extra safety
+  // SECURITY: rsyncPull must run on HOST, not in container
+  // The container doesn't have SSH access to bx-archive and doesn't have bash
+  // This function should NOT be called from inside the Payload container
+
+  // Check for Docker container indicators using robust detection
+  let isInsideContainer = false
+  let detectionContext: Record<string, any> = {
+    HOSTNAME: process.env.HOSTNAME,
+    CONTAINER: process.env.CONTAINER,
+    cwd: process.cwd(),
+  }
+
+  try {
+    const fs = require('fs')
+    const hasDockerenv = fs.existsSync('/.dockerenv')
+    let hasDockerCgroup = false
+
+    if (fs.existsSync('/proc/1/cgroup')) {
+      const cgroupContent = fs.readFileSync('/proc/1/cgroup', 'utf8')
+      hasDockerCgroup = cgroupContent.includes('docker')
+    }
+
+    detectionContext.hasDockerenv = hasDockerenv
+    detectionContext.hasDockerCgroup = hasDockerCgroup
+
+    isInsideContainer = hasDockerenv || hasDockerCgroup
+  } catch (error) {
+    // Fallback to env var checks if file system checks fail
+    isInsideContainer =
+      !!process.env.CONTAINER || process.env.HOSTNAME?.includes('payload')
+    detectionContext.fallbackUsed = true
+    detectionContext.fallbackError = (error as Error).message
+  }
+
+  // Log detection context for debugging
+  console.log(`[RSYNCPULL] Detection context:`, JSON.stringify(detectionContext))
+
+  if (isInsideContainer) {
+    // SECURITY: Block execution from inside container
+    // rsyncPull must be called from host-side scripts only
+    console.log(
+      `[RSYNCPULL] EXECUTION_BLOCKED: Running inside container (HOSTNAME=${process.env.HOSTNAME || 'unknown'})`,
+    )
+    throw new RsyncPullError(
+      'E_EXECUTION_BLOCKED',
+      'rsyncPull cannot be executed from inside container. This function must be called from host-side scripts only (e.g., cron jobs running on host).',
+    )
+  }
+
+  // Execute on host only
   const scriptPath = `${process.cwd()}/scripts/sh/archive/rsync_pull.sh`
   const escapedSrc = escapeShellArg(srcArchivePath)
   const escapedDst = escapeShellArg(dstWorkingPath)

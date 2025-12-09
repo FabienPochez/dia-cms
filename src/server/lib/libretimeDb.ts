@@ -1,8 +1,8 @@
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { isValidPath, escapeShellArg } from '../../lib/utils/pathSanitizer'
+import { isValidPath } from '../../lib/utils/pathSanitizer'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 // LibreTime database configuration
 const LIBRETIME_DB_HOST = process.env.LIBRETIME_DB_HOST || 'libretime-postgres-1'
@@ -12,6 +12,7 @@ const LIBRETIME_DB_PASSWORD = process.env.LIBRETIME_DB_PASSWORD || 'libretime'
 
 /**
  * Update file_exists status in LibreTime database
+ * SECURITY: Uses execFile with array arguments to prevent shell injection
  */
 export async function updateLibreTimeFileExists(
   filepath: string,
@@ -28,30 +29,54 @@ export async function updateLibreTimeFileExists(
     const existsValue = exists ? 'true' : 'false'
 
     // Escape single quotes in filepath for SQL (double single quotes)
+    // Security: filepath already validated by isValidPath() above
     const escapedPath = filepath.replace(/'/g, "''")
+    const sqlQuery = `UPDATE cc_files SET file_exists = ${existsValue} WHERE filepath = '${escapedPath}';`
 
-    // Try docker exec first (from host), fallback to psql (from container)
-    let command: string
     const isInsideContainer =
       process.env.HOSTNAME?.includes('payload') || process.env.CONTAINER === 'true'
 
-    // Security: Use escaped path in SQL query (already validated above)
-    // The escapedPath is safe for SQL (single quotes escaped), and filepath was validated
-    if (isInsideContainer) {
-      // Inside container: use psql directly with TCP connection
-      // Note: escapedPath is safe - validated and SQL-escaped
-      command = `PGPASSWORD='${LIBRETIME_DB_PASSWORD}' psql -h ${LIBRETIME_DB_HOST} -U ${LIBRETIME_DB_USER} -d ${LIBRETIME_DB_NAME} -c "UPDATE cc_files SET file_exists = ${existsValue} WHERE filepath = '${escapedPath}';"`
-    } else {
-      // On host: use docker exec
-      // Note: escapedPath is safe - validated and SQL-escaped
-      command = `docker exec -i libretime-postgres-1 psql -U ${LIBRETIME_DB_USER} -d ${LIBRETIME_DB_NAME} -c "UPDATE cc_files SET file_exists = ${existsValue} WHERE filepath = '${escapedPath}';"`
-    }
-
     console.log(`🔄 Updating LibreTime DB: file_exists=${existsValue} for ${filepath}`)
 
-    const { stderr } = await execAsync(command, {
-      timeout: 10000, // 10 second timeout
-    })
+    // Security: Use execFile with array arguments to prevent shell injection
+    // Pass SQL query via -c argument to avoid shell interpretation
+    let stderr: string
+    if (isInsideContainer) {
+      // Inside container: use psql directly with TCP connection
+      const { stderr: psqlStderr } = await execFileAsync(
+        'psql',
+        ['-h', LIBRETIME_DB_HOST, '-U', LIBRETIME_DB_USER, '-d', LIBRETIME_DB_NAME, '-c', sqlQuery],
+        {
+          timeout: 10000,
+          env: {
+            ...process.env,
+            PGPASSWORD: LIBRETIME_DB_PASSWORD,
+          },
+        },
+      )
+      stderr = psqlStderr || ''
+    } else {
+      // On host: use docker exec with execFile
+      const { stderr: dockerStderr } = await execFileAsync(
+        'docker',
+        [
+          'exec',
+          '-i',
+          'libretime-postgres-1',
+          'psql',
+          '-U',
+          LIBRETIME_DB_USER,
+          '-d',
+          LIBRETIME_DB_NAME,
+          '-c',
+          sqlQuery,
+        ],
+        {
+          timeout: 10000,
+        },
+      )
+      stderr = dockerStderr || ''
+    }
 
     if (stderr && !stderr.includes('UPDATE')) {
       console.warn(`⚠️ LibreTime DB warning: ${stderr.trim()}`)
@@ -68,6 +93,7 @@ export async function updateLibreTimeFileExists(
 
 /**
  * Update multiple files' file_exists status in LibreTime database
+ * SECURITY: Uses execFile with array arguments to prevent shell injection
  */
 export async function updateLibreTimeFileExistsBatch(
   updates: Array<{ filepath: string; exists: boolean }>,
@@ -106,24 +132,59 @@ export async function updateLibreTimeFileExistsBatch(
 
     const sqlCommand = `UPDATE cc_files SET file_exists = CASE filepath ${updateClauses} ELSE file_exists END WHERE filepath IN (${filepaths});`
 
-    // Try docker exec first (from host), fallback to psql (from container)
-    let command: string
     const isInsideContainer =
       process.env.HOSTNAME?.includes('payload') || process.env.CONTAINER === 'true'
 
-    if (isInsideContainer) {
-      // Inside container: use psql directly with TCP connection
-      command = `PGPASSWORD='${LIBRETIME_DB_PASSWORD}' psql -h ${LIBRETIME_DB_HOST} -U ${LIBRETIME_DB_USER} -d ${LIBRETIME_DB_NAME} -c "${sqlCommand}"`
-    } else {
-      // On host: use docker exec
-      command = `docker exec -i libretime-postgres-1 psql -U ${LIBRETIME_DB_USER} -d ${LIBRETIME_DB_NAME} -c "${sqlCommand}"`
-    }
-
     console.log(`🔄 Batch updating LibreTime DB: ${updates.length} files`)
 
-    const { stderr } = await execAsync(command, {
-      timeout: 30000, // 30 second timeout for batch operations
-    })
+    // Security: Use execFile with array arguments to prevent shell injection
+    // Pass SQL query via -c argument to avoid shell interpretation
+    let stderr: string
+    if (isInsideContainer) {
+      // Inside container: use psql directly with TCP connection
+      const { stderr: psqlStderr } = await execFileAsync(
+        'psql',
+        [
+          '-h',
+          LIBRETIME_DB_HOST,
+          '-U',
+          LIBRETIME_DB_USER,
+          '-d',
+          LIBRETIME_DB_NAME,
+          '-c',
+          sqlCommand,
+        ],
+        {
+          timeout: 30000,
+          env: {
+            ...process.env,
+            PGPASSWORD: LIBRETIME_DB_PASSWORD,
+          },
+        },
+      )
+      stderr = psqlStderr || ''
+    } else {
+      // On host: use docker exec with execFile
+      const { stderr: dockerStderr } = await execFileAsync(
+        'docker',
+        [
+          'exec',
+          '-i',
+          'libretime-postgres-1',
+          'psql',
+          '-U',
+          LIBRETIME_DB_USER,
+          '-d',
+          LIBRETIME_DB_NAME,
+          '-c',
+          sqlCommand,
+        ],
+        {
+          timeout: 30000,
+        },
+      )
+      stderr = dockerStderr || ''
+    }
 
     if (stderr && !stderr.includes('UPDATE')) {
       console.warn(`⚠️ LibreTime DB warning: ${stderr.trim()}`)

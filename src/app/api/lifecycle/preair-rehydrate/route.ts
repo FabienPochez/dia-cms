@@ -9,12 +9,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import { checkScheduleAuth } from '@/lib/auth/checkScheduleAuth'
 import { checkRateLimit, getClientIp } from '@/lib/utils/rateLimiter'
-
-const execAsync = promisify(exec)
+import { getPayload } from 'payload'
+import config from '@/payload.config'
+import fs from 'fs/promises'
+import path from 'path'
+import { acquireEpisodeLock, releaseEpisodeLock, cleanupStaleLocks } from '@/server/lib/episodeLock'
+import { rsyncPull } from '@/server/lib/rsyncPull'
+import { logLifecycle } from '@/server/lib/logLifecycle'
+import { updateLibreTimeFileExists } from '@/server/lib/libretimeDb'
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,32 +63,120 @@ export async function POST(req: NextRequest) {
       `[PREAIR_REHYDRATE_API] Manual trigger requested by ${auth.user?.email} (${auth.user?.role})`,
     )
 
-    // Execute the pre-air rehydrate script via ephemeral jobs container
-    // This runs the same script that Cron A runs every 15 minutes
-    const { stdout, stderr } = await execAsync(
-      'docker compose -f /srv/payload/docker-compose.yml run --rm jobs sh -lc "npx tsx scripts/cron/preair_rehydrate.ts"',
-      {
-        timeout: 300000, // 5 minute timeout
-        cwd: '/srv/payload',
-        env: {
-          ...process.env,
-          NODE_ENV: process.env.NODE_ENV || 'production',
-        },
+    // Call preair rehydrate function directly (same logic as cron script)
+    const LIBRETIME_LIBRARY_ROOT = process.env.LIBRETIME_LIBRARY_ROOT || '/srv/media'
+    const MAX_CONCURRENCY = 3
+    const results = {
+      found: 0,
+      ok: 0,
+      copied: 0,
+      error: 0,
+    }
+
+    // Clean up stale locks
+    const cleanedLocks = await cleanupStaleLocks()
+    if (cleanedLocks > 0) {
+      console.log(`🧹 Cleaned up ${cleanedLocks} stale locks`)
+    }
+
+    // Initialize Payload
+    const payload = await getPayload({ config })
+
+    // Query episodes scheduled in next 24 hours
+    const episodes = await payload.find({
+      collection: 'episodes',
+      where: {
+        and: [
+          { publishedStatus: { equals: 'published' } },
+          { scheduledAt: { exists: true } },
+          { scheduledAt: { greater_than_equal: new Date().toISOString() } },
+          {
+            scheduledAt: {
+              less_than: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            },
+          },
+          { libretimeFilepathRelative: { exists: true } },
+          { libretimeFilepathRelative: { not_equals: '' } },
+        ],
       },
-    )
+      limit: 100,
+      depth: 0,
+    })
 
-    // Parse the output to extract results
-    const output = stdout + stderr
-    const foundMatch = output.match(/📋 Found (\d+) episodes to process/)
-    const resultsMatch = output.match(/📊 Results: (\d+) OK, (\d+) copied, (\d+) errors/)
+    results.found = episodes.docs.length
+    console.log(`📋 Found ${episodes.docs.length} episodes to process`)
 
-    const episodesFound = foundMatch ? parseInt(foundMatch[1]) : 0
-    const episodesOk = resultsMatch ? parseInt(resultsMatch[1]) : 0
-    const episodesCopied = resultsMatch ? parseInt(resultsMatch[2]) : 0
-    const episodesErrors = resultsMatch ? parseInt(resultsMatch[3]) : 0
+    if (episodes.docs.length === 0) {
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'No episodes to process',
+          results: {
+            found: 0,
+            ok: 0,
+            copied: 0,
+            errors: 0,
+          },
+        },
+        { status: 200 },
+      )
+    }
+
+    // Process episodes with concurrency control
+    for (let i = 0; i < episodes.docs.length; i += MAX_CONCURRENCY) {
+      const batch = episodes.docs.slice(i, i + MAX_CONCURRENCY)
+
+      await Promise.all(
+        batch.map(async (episode: any) => {
+          const episodeId = episode.id
+          const libretimeFilepathRelative = episode.libretimeFilepathRelative
+
+          if (!libretimeFilepathRelative) {
+            return
+          }
+
+          const lockAcquired = await acquireEpisodeLock(episodeId)
+          if (!lockAcquired) {
+            console.log(`⏭️  Episode ${episodeId} is locked, skipping`)
+            return
+          }
+
+          try {
+            const workingPath = path.join(LIBRETIME_LIBRARY_ROOT, libretimeFilepathRelative)
+
+            // Check if working file exists
+            try {
+              await fs.access(workingPath)
+              results.ok++
+              console.log(`✅ Working file exists: ${libretimeFilepathRelative}`)
+            } catch {
+              // File missing, rehydrate
+              const archiveFilePath = episode.archiveFilePath as string | undefined
+
+              if (archiveFilePath) {
+                try {
+                  await rsyncPull(archiveFilePath, libretimeFilepathRelative)
+                  await updateLibreTimeFileExists(libretimeFilepathRelative, true)
+                  results.copied++
+                  console.log(`✅ Rehydrated: ${libretimeFilepathRelative}`)
+                } catch (error: any) {
+                  results.error++
+                  console.error(`❌ Rehydrate failed: ${error.message}`)
+                }
+              } else {
+                results.error++
+                console.log(`❌ No archive file for: ${libretimeFilepathRelative}`)
+              }
+            }
+          } finally {
+            await releaseEpisodeLock(episodeId)
+          }
+        }),
+      )
+    }
 
     console.log(
-      `[PREAIR_REHYDRATE_API] Complete: ${episodesFound} found, ${episodesOk} OK, ${episodesCopied} copied, ${episodesErrors} errors`,
+      `[PREAIR_REHYDRATE_API] Complete: ${results.found} found, ${results.ok} OK, ${results.copied} copied, ${results.error} errors`,
     )
 
     return NextResponse.json(
@@ -92,12 +184,11 @@ export async function POST(req: NextRequest) {
         success: true,
         message: 'Pre-air rehydrate completed',
         results: {
-          found: episodesFound,
-          ok: episodesOk,
-          copied: episodesCopied,
-          errors: episodesErrors,
+          found: results.found,
+          ok: results.ok,
+          copied: results.copied,
+          errors: results.error,
         },
-        output: output.substring(0, 1000), // First 1000 chars for debugging
       },
       { status: 200 },
     )
@@ -115,4 +206,3 @@ export async function POST(req: NextRequest) {
     )
   }
 }
-

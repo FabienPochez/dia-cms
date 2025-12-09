@@ -4,15 +4,22 @@
  *
  * Manually triggers Cron B (post-air archive sweep) to update metrics and
  * archive working files for recently aired episodes.
+ *
+ * NOTE: This endpoint runs inside the container, so it cannot execute host-side
+ * operations like rsyncPull or callWeeklyRsync. It will:
+ * - Update airing metrics
+ * - Cleanup working files for already-archived episodes
+ * - Skip archiving operations (those must run via cron from host)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import { checkScheduleAuth } from '@/lib/auth/checkScheduleAuth'
 import { checkRateLimit, getClientIp } from '@/lib/utils/rateLimiter'
-
-const execAsync = promisify(exec)
+import { getPayload } from 'payload'
+import config from '@/payload.config'
+import fs from 'fs/promises'
+import path from 'path'
+import { acquireEpisodeLock, releaseEpisodeLock, cleanupStaleLocks } from '@/server/lib/episodeLock'
 
 export async function POST(req: NextRequest) {
   try {
@@ -57,44 +64,156 @@ export async function POST(req: NextRequest) {
       `[POSTAIR_ARCHIVE_API] Manual trigger requested by ${auth.user?.email} (${auth.user?.role})`,
     )
 
-    // Execute the post-air archive script via ephemeral jobs container
-    // This runs the same script that Cron B runs every 10 minutes
-    const { stdout, stderr } = await execAsync(
-      'docker compose -f /srv/payload/docker-compose.yml run --rm jobs sh -lc "npx tsx scripts/cron/postair_archive_cleanup.ts"',
-      {
-        timeout: 300000, // 5 minute timeout
-        cwd: '/srv/payload',
-        env: {
-          ...process.env,
-          NODE_ENV: process.env.NODE_ENV || 'production',
-        },
+    // Call postair cleanup functions directly (same logic as cron script)
+    // NOTE: We skip archiving operations (callWeeklyRsync) since they require host-side SSH access
+    // Archiving must be done via cron jobs running from the host
+    const LIBRETIME_LIBRARY_ROOT = process.env.LIBRETIME_LIBRARY_ROOT || '/srv/media'
+    const MAX_CONCURRENCY = 3
+    const results = {
+      found: 0,
+      skipped: 0,
+      errors: 0,
+    }
+
+    // Clean up stale locks
+    const cleanedLocks = await cleanupStaleLocks()
+    if (cleanedLocks > 0) {
+      console.log(`🧹 Cleaned up ${cleanedLocks} stale locks`)
+    }
+
+    // Initialize Payload
+    const payload = await getPayload({ config })
+
+    // Query episodes using same logic as cron script
+    // Time window: now-48h to now-10m
+    const now = new Date()
+    const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000)
+    const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000)
+
+    const episodes = await payload.find({
+      collection: 'episodes',
+      where: {
+        and: [
+          { publishedStatus: { equals: 'published' } },
+          { scheduledEnd: { exists: true } },
+          { scheduledEnd: { greater_than_equal: fortyEightHoursAgo.toISOString() } },
+          { scheduledEnd: { less_than: tenMinutesAgo.toISOString() } },
+          { libretimeFilepathRelative: { exists: true } },
+          { libretimeFilepathRelative: { not_equals: '' } },
+        ],
       },
-    )
+      limit: 200,
+      depth: 0,
+    })
 
-    const output = stdout + stderr
-    const foundMatch = output.match(/📋 Found (\d+) episodes to process/)
-    const resultsMatch = output.match(/📊 Results: (\d+) archived, (\d+) skipped, (\d+) errors/)
+    results.found = episodes.docs.length
+    console.log(`📋 Found ${episodes.docs.length} episodes to process`)
 
-    const episodesFound = foundMatch ? parseInt(foundMatch[1]) : 0
-    const episodesArchived = resultsMatch ? parseInt(resultsMatch[1]) : 0
-    const episodesSkipped = resultsMatch ? parseInt(resultsMatch[2]) : 0
-    const episodesErrors = resultsMatch ? parseInt(resultsMatch[3]) : 0
+    if (episodes.docs.length === 0) {
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'No episodes to process',
+          results: {
+            found: 0,
+            skipped: 0,
+            errors: 0,
+          },
+          note: 'Archiving operations require host-side execution via cron jobs',
+        },
+        { status: 200 },
+      )
+    }
+
+    // Process episodes with concurrency control
+    for (let i = 0; i < episodes.docs.length; i += MAX_CONCURRENCY) {
+      const batch = episodes.docs.slice(i, i + MAX_CONCURRENCY)
+
+      await Promise.all(
+        batch.map(async (episode: any) => {
+          const episodeId = episode.id
+          const libretimeFilepathRelative = episode.libretimeFilepathRelative
+          const hasArchiveFile = episode.hasArchiveFile || false
+
+          if (!libretimeFilepathRelative) {
+            return
+          }
+
+          const lockAcquired = await acquireEpisodeLock(episodeId)
+          if (!lockAcquired) {
+            console.log(`⏭️  Episode ${episodeId} is locked, skipping`)
+            return
+          }
+
+          try {
+            // Update airing metrics
+            const scheduledEnd = episode.scheduledEnd
+            const firstAiredAt = episode.firstAiredAt
+            const plays = episode.plays || 0
+
+            await payload.update({
+              collection: 'episodes',
+              id: episodeId,
+              data: {
+                lastAiredAt: scheduledEnd,
+                plays: plays + 1,
+                airTimingIsEstimated: true,
+                ...(firstAiredAt ? {} : { firstAiredAt: episode.scheduledAt }),
+              },
+            })
+
+            // Only cleanup working files for already-archived episodes
+            // Archiving new episodes requires host-side rsync (via cron)
+            if (hasArchiveFile) {
+              const workingAbs = path.join(LIBRETIME_LIBRARY_ROOT, libretimeFilepathRelative)
+              const processedPath = workingAbs.replace('/imported/1/', '/imported/1/processed/')
+
+              try {
+                await fs.access(workingAbs)
+                await fs.unlink(workingAbs)
+                console.log(`🗑️  Deleted working file: ${libretimeFilepathRelative}`)
+              } catch (error: any) {
+                if (error.code === 'ENOENT') {
+                  try {
+                    await fs.access(processedPath)
+                    await fs.unlink(processedPath)
+                    console.log(`🗑️  Deleted processed file: ${libretimeFilepathRelative}`)
+                  } catch {
+                    // File already removed
+                  }
+                }
+              }
+              results.skipped++
+            } else {
+              // Episode not archived yet - skip (archiving requires host-side cron)
+              console.log(
+                `⏭️  Episode ${episodeId} not archived yet - archiving requires host-side cron`,
+              )
+            }
+          } catch (error: any) {
+            results.errors++
+            console.error(`❌ Error processing episode ${episodeId}:`, error.message)
+          } finally {
+            await releaseEpisodeLock(episodeId)
+          }
+        }),
+      )
+    }
 
     console.log(
-      `[POSTAIR_ARCHIVE_API] Complete: ${episodesFound} found, ${episodesArchived} archived, ${episodesSkipped} skipped, ${episodesErrors} errors`,
+      `[POSTAIR_ARCHIVE_API] Complete: ${results.found} found, ${results.skipped} cleaned up, ${results.errors} errors`,
     )
 
     return NextResponse.json(
       {
         success: true,
-        message: 'Post-air archive completed',
+        message: 'Post-air cleanup completed',
         results: {
-          found: episodesFound,
-          archived: episodesArchived,
-          skipped: episodesSkipped,
-          errors: episodesErrors,
+          found: results.found,
+          skipped: results.skipped,
+          errors: results.errors,
         },
-        output: output.substring(0, 1000),
+        note: 'Archiving operations require host-side execution via cron jobs',
       },
       { status: 200 },
     )

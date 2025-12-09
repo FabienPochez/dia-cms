@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
 import path from 'path'
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { getPayload } from 'payload'
 import type { Payload } from 'payload'
@@ -15,7 +15,7 @@ import { getWeeklyArchivePath } from '../../src/server/lib/timezoneUtils'
 import { rsyncPull } from '../../src/server/lib/rsyncPull'
 import { logLifecycle } from '../../src/server/lib/logLifecycle'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 // Configuration
 const LIBRETIME_LIBRARY_ROOT = process.env.LIBRETIME_LIBRARY_ROOT || '/srv/media'
@@ -57,10 +57,18 @@ async function callWeeklyRsync(
   episodeId: string,
 ): Promise<{ success: boolean; exitCode: number }> {
   try {
-    const cmd = `EPISODE_ID="${episodeId}" "${process.cwd()}/scripts/sh/archive/rsync_postair_weekly.sh" "${workingAbs}" "${destRel}"`
-    console.log(`📦 Running: ${cmd}`)
+    const scriptPath = path.join(process.cwd(), 'scripts/sh/archive/rsync_postair_weekly.sh')
+    console.log(`📦 Running: EPISODE_ID="${episodeId}" ${scriptPath} "${workingAbs}" "${destRel}"`)
 
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 300000 }) // 5 minutes timeout
+    // SECURITY: Use execFile with array arguments to prevent shell injection
+    // Pass EPISODE_ID via environment variable, script path and arguments as array
+    const { stdout, stderr } = await execFileAsync(scriptPath, [workingAbs, destRel], {
+      timeout: 300000, // 5 minutes timeout
+      env: {
+        ...process.env,
+        EPISODE_ID: episodeId,
+      },
+    })
 
     if (stderr) {
       console.warn(`⚠️ rsync stderr: ${stderr.trim()}`)
@@ -101,10 +109,15 @@ async function callHydrateArchivePaths(): Promise<boolean> {
  */
 async function callCleanupImportedFiles(): Promise<boolean> {
   try {
-    const cmd = `npx tsx scripts/cleanup-imported-files.ts --log "${LOG_FILE}"`
-    console.log(`🧹 Running: ${cmd}`)
+    const scriptPath = path.join(process.cwd(), 'scripts/cleanup-imported-files.ts')
+    console.log(`🧹 Running: npx tsx ${scriptPath} --log "${LOG_FILE}"`)
 
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 60000 }) // 1 minute timeout
+    // SECURITY: Use execFile with array arguments to prevent shell injection
+    const { stdout, stderr } = await execFileAsync(
+      'npx',
+      ['tsx', scriptPath, '--log', LOG_FILE],
+      { timeout: 60000 }, // 1 minute timeout
+    )
 
     if (stderr) {
       console.warn(`⚠️ cleanup stderr: ${stderr.trim()}`)

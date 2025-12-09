@@ -1614,6 +1614,8 @@ docker exec -i libretime-postgres-1 psql -U libretime -d libretime -c \
 
 ### Security Considerations
 
+**See:** `docs/SECURITY_CONSTRAINTS.md` for detailed security guidelines, command execution patterns, and endpoint access controls.
+
 - **SSH Keys**: Use dedicated SSH keys for Hetzner Storage Box
 - **API Keys**: Store securely, rotate regularly
 - **File Permissions**: Ensure proper ownership of media files

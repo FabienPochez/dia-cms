@@ -17,6 +17,37 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-09] - Security: Fix Command Injection Vulnerabilities & Refactor Postair Archive Endpoint
+
+### Security
+- **Postair Archive Cleanup Command Injection Fix** – Fixed critical command injection vulnerability in `postair_archive_cleanup.ts` by replacing all `exec()` calls with `execFile()` using array arguments. Location: `scripts/cron/postair_archive_cleanup.ts`
+  - **Vulnerabilities Fixed**: Three `exec()` calls replaced:
+    1. `callWeeklyRsync()` - Now uses `execFile()` with script path and arguments as array
+    2. `callHydrateArchivePaths()` - Now uses `execFile()` with `npx` and arguments as array
+    3. `callCleanupImportedFiles()` - Now uses `execFile()` with `npx` and arguments as array
+  - **Attack Vector**: Malicious data in `episodeId`, `workingAbs`, or `destRel` fields could execute arbitrary shell commands
+  - **Fix Applied**: All commands now use `execFile()` with arguments passed as arrays, preventing shell interpretation
+  - **Impact**: Episode data can no longer inject shell commands, even if database contains malicious values
+  - **Pattern**: Matches secure pattern used in `libretimeDb.ts`, `audioValidation.ts`, and `deterministicFeed.ts`
+
+- **Postair Archive API Endpoint Refactor** – Refactored `/api/lifecycle/postair-archive` endpoint to call functions directly instead of spawning `docker compose` from inside container. Location: `src/app/api/lifecycle/postair-archive/route.ts`
+  - **Issue**: Endpoint attempted to run `docker compose` from inside container, which fails (docker not available in container)
+  - **Solution**: Endpoint now calls cleanup functions directly (same pattern as `preair-rehydrate` endpoint)
+  - **Limitations**: Endpoint skips archiving operations (requires host-side SSH access via cron), but can:
+    - Update airing metrics for episodes
+    - Cleanup working files for already-archived episodes
+  - **Note**: Full archiving operations must run via cron jobs from host (which work correctly)
+
+### Fixed
+- **Command Injection in Postair Archive Cleanup** – Fixed command injection vulnerabilities in postair archive cleanup script
+- **Postair Archive API Endpoint** – Fixed endpoint to work from inside container by calling functions directly instead of spawning docker compose
+
+### Changed
+- **Cron Jobs Re-enabled** – Re-enabled `preair_rehydrate` (every 15 minutes) and `postair_archive_cleanup` (every 10 minutes) cron jobs after security fixes verified
+- **Monitoring Enhanced** – Added malicious activity monitoring script (`scripts/monitor-malicious-activity.sh`) that checks for suspicious processes and log patterns every 30 seconds
+
+---
+
 ## [2025-12-09] - Security: Fix Command Injection Vulnerability in Audio Validation
 
 ### Security
