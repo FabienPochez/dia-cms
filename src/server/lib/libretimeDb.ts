@@ -1,8 +1,5 @@
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+import { diagExecFile } from './subprocessDiag'
 import { isValidPath } from '../../lib/utils/pathSanitizer'
-
-const execFileAsync = promisify(execFile)
 
 // LibreTime database configuration
 const LIBRETIME_DB_HOST = process.env.LIBRETIME_DB_HOST || 'libretime-postgres-1'
@@ -43,9 +40,23 @@ export async function updateLibreTimeFileExists(
     let stderr: string
     if (isInsideContainer) {
       // Inside container: use psql directly with TCP connection
-      const { stderr: psqlStderr } = await execFileAsync(
+      const execArgs = [
+        '-h',
+        LIBRETIME_DB_HOST,
+        '-U',
+        LIBRETIME_DB_USER,
+        '-d',
+        LIBRETIME_DB_NAME,
+        '-c',
+        sqlQuery,
+      ]
+      console.log(
+        `[SUBPROC] libretimeDb.updateLibreTimeFileExists execFile: psql args=`,
+        JSON.stringify(execArgs),
+      )
+      const { stderr: psqlStderr } = await diagExecFile(
         'psql',
-        ['-h', LIBRETIME_DB_HOST, '-U', LIBRETIME_DB_USER, '-d', LIBRETIME_DB_NAME, '-c', sqlQuery],
+        execArgs,
         {
           timeout: 10000,
           env: {
@@ -53,27 +64,34 @@ export async function updateLibreTimeFileExists(
             PGPASSWORD: LIBRETIME_DB_PASSWORD,
           },
         },
+        'libretimeDb.updateLibreTimeFileExists.psql',
       )
       stderr = psqlStderr || ''
     } else {
       // On host: use docker exec with execFile
-      const { stderr: dockerStderr } = await execFileAsync(
+      const execArgs = [
+        'exec',
+        '-i',
+        'libretime-postgres-1',
+        'psql',
+        '-U',
+        LIBRETIME_DB_USER,
+        '-d',
+        LIBRETIME_DB_NAME,
+        '-c',
+        sqlQuery,
+      ]
+      console.log(
+        `[SUBPROC] libretimeDb.updateLibreTimeFileExists execFile: docker args=`,
+        JSON.stringify(execArgs),
+      )
+      const { stderr: dockerStderr } = await diagExecFile(
         'docker',
-        [
-          'exec',
-          '-i',
-          'libretime-postgres-1',
-          'psql',
-          '-U',
-          LIBRETIME_DB_USER,
-          '-d',
-          LIBRETIME_DB_NAME,
-          '-c',
-          sqlQuery,
-        ],
+        execArgs,
         {
           timeout: 10000,
         },
+        'libretimeDb.updateLibreTimeFileExists.docker',
       )
       stderr = dockerStderr || ''
     }
@@ -142,18 +160,23 @@ export async function updateLibreTimeFileExistsBatch(
     let stderr: string
     if (isInsideContainer) {
       // Inside container: use psql directly with TCP connection
-      const { stderr: psqlStderr } = await execFileAsync(
+      const execArgs = [
+        '-h',
+        LIBRETIME_DB_HOST,
+        '-U',
+        LIBRETIME_DB_USER,
+        '-d',
+        LIBRETIME_DB_NAME,
+        '-c',
+        sqlCommand,
+      ]
+      console.log(
+        `[SUBPROC] libretimeDb.updateLibreTimeFileExistsBatch execFile: psql args=`,
+        JSON.stringify(execArgs),
+      )
+      const { stderr: psqlStderr } = await diagExecFile(
         'psql',
-        [
-          '-h',
-          LIBRETIME_DB_HOST,
-          '-U',
-          LIBRETIME_DB_USER,
-          '-d',
-          LIBRETIME_DB_NAME,
-          '-c',
-          sqlCommand,
-        ],
+        execArgs,
         {
           timeout: 30000,
           env: {
@@ -161,27 +184,34 @@ export async function updateLibreTimeFileExistsBatch(
             PGPASSWORD: LIBRETIME_DB_PASSWORD,
           },
         },
+        'libretimeDb.updateLibreTimeFileExistsBatch.psql',
       )
       stderr = psqlStderr || ''
     } else {
       // On host: use docker exec with execFile
-      const { stderr: dockerStderr } = await execFileAsync(
+      const execArgs = [
+        'exec',
+        '-i',
+        'libretime-postgres-1',
+        'psql',
+        '-U',
+        LIBRETIME_DB_USER,
+        '-d',
+        LIBRETIME_DB_NAME,
+        '-c',
+        sqlCommand,
+      ]
+      console.log(
+        `[SUBPROC] libretimeDb.updateLibreTimeFileExistsBatch execFile: docker args=`,
+        JSON.stringify(execArgs),
+      )
+      const { stderr: dockerStderr } = await diagExecFile(
         'docker',
-        [
-          'exec',
-          '-i',
-          'libretime-postgres-1',
-          'psql',
-          '-U',
-          LIBRETIME_DB_USER,
-          '-d',
-          LIBRETIME_DB_NAME,
-          '-c',
-          sqlCommand,
-        ],
+        execArgs,
         {
           timeout: 30000,
         },
+        'libretimeDb.updateLibreTimeFileExistsBatch.docker',
       )
       stderr = dockerStderr || ''
     }

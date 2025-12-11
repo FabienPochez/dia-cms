@@ -1,0 +1,18 @@
+[Unit]
+Description=Kill Malicious Processes - Temporary Security Measure
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/srv/payload
+ExecStart=/srv/payload/scripts/kill-malicious-processes.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
+

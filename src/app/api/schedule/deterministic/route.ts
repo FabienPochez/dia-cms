@@ -44,10 +44,7 @@ function consumeRateToken(): boolean {
   return false
 }
 
-function statusHeader(
-  snapshot: BuildDeterministicFeedResult,
-  override?: string,
-): string {
+function statusHeader(snapshot: BuildDeterministicFeedResult, override?: string): string {
   if (override) return override
   if (snapshot.fallbackApplied) return 'error+fallback'
   return snapshot.feedStatus
@@ -98,6 +95,17 @@ function respondWithSnapshot(
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  // Security: Check if deterministic feed is temporarily disabled
+  if (process.env.DISABLE_DETERMINISTIC_FEED === 'true') {
+    return NextResponse.json(
+      {
+        error: 'Deterministic feed temporarily disabled for security investigation',
+        feed_status: 'error',
+      },
+      { status: 503 },
+    )
+  }
+
   const sharedToken = process.env.DETERMINISTIC_FEED_TOKEN || process.env.PAYLOAD_API_KEY
 
   if (sharedToken) {

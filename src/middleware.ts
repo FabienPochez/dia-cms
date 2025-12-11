@@ -1,3 +1,5 @@
+// GLOBAL SUBPROCESS DIAGNOSTIC PATCH - MUST BE FIRST
+import '@/server/lib/subprocessGlobalDiag'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 

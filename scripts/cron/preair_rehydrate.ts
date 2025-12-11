@@ -1,4 +1,6 @@
 import 'dotenv/config'
+// GLOBAL SUBPROCESS DIAGNOSTIC PATCH - MUST BE FIRST
+import '../../src/server/lib/subprocessGlobalDiag'
 import fs from 'fs/promises'
 import path from 'path'
 import { getPayload } from 'payload'

@@ -3,14 +3,10 @@
  * Copies files from Hetzner archive to local working directory
  */
 
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import fs from 'fs/promises'
 import path from 'path'
 import { isValidRelativePath, escapeShellArg } from '../../lib/utils/pathSanitizer'
-
-const execAsync = promisify(exec)
-// Note: execAsync is only used for host-side execution (when not in container)
+import { diagExec } from './subprocessDiag'
 
 export interface RsyncPullResult {
   bytes: number
@@ -100,8 +96,7 @@ export async function rsyncPull(
     isInsideContainer = hasDockerenv || hasDockerCgroup
   } catch (error) {
     // Fallback to env var checks if file system checks fail
-    isInsideContainer =
-      !!process.env.CONTAINER || process.env.HOSTNAME?.includes('payload')
+    isInsideContainer = !!process.env.CONTAINER || process.env.HOSTNAME?.includes('payload')
     detectionContext.fallbackUsed = true
     detectionContext.fallbackError = (error as Error).message
   }
@@ -127,13 +122,15 @@ export async function rsyncPull(
   const escapedDst = escapeShellArg(dstWorkingPath)
   const hostCmd = `bash ${escapeShellArg(scriptPath)} ${escapedSrc} ${escapedDst}`
 
+  console.log(`[SUBPROC] rsyncPull.exec exec: cmd=`, hostCmd)
+
   // Execute rsync with retry logic
   const maxRetries = 2
   let lastError: Error | null = null
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const { stdout } = await execAsync(hostCmd, { timeout: 300000 }) // 5 min timeout
+      const { stdout } = await diagExec(hostCmd, { timeout: 300000 }, 'rsyncPull.host')
 
       // Parse file size from stdout (last line from script is the byte count)
       const bytes = parseInt(stdout.trim().split('\n').pop() || '0', 10)

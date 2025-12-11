@@ -1,4 +1,8 @@
 // storage-adapter-import-placeholder
+// GLOBAL SUBPROCESS DIAGNOSTIC PATCH - MUST BE FIRST
+import '@/server/lib/subprocessGlobalDiag'
+// MIGRATION EVAL PROTECTION - MUST BE SECOND (before Payload loads)
+import '@/server/lib/migrationEvalProtection'
 import { mongooseAdapter } from '@payloadcms/db-mongodb'
 import { payloadCloudPlugin } from '@payloadcms/payload-cloud'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'

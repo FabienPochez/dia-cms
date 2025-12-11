@@ -1,8 +1,5 @@
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import path from 'path'
-
-const execFileAsync = promisify(execFile)
+import { diagExecFile } from '@/server/lib/subprocessDiag'
 
 interface AudioMetadata {
   durationSec: number
@@ -23,7 +20,7 @@ async function getAudioMetadata(filePath: string): Promise<AudioMetadata> {
   try {
     // Use system ffprobe (installed via apk in Alpine container)
     // Security: Use execFile with array arguments to prevent command injection
-    const { stdout } = await execFileAsync('ffprobe', [
+    const execArgs = [
       '-v',
       'quiet',
       '-print_format',
@@ -31,7 +28,12 @@ async function getAudioMetadata(filePath: string): Promise<AudioMetadata> {
       '-show_format',
       '-show_streams',
       filePath, // Safe - passed as array argument, not string interpolation
-    ])
+    ]
+    console.log(
+      `[SUBPROC] audioValidation.getAudioMetadata execFile: ffprobe args=`,
+      JSON.stringify(execArgs),
+    )
+    const { stdout } = await diagExecFile('ffprobe', execArgs, undefined, 'audioValidation.ffprobe')
 
     const data = JSON.parse(stdout)
 

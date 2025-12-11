@@ -3,13 +3,10 @@ import fs from 'fs/promises'
 import { createReadStream, Stats } from 'fs'
 import path from 'path'
 import crypto from 'crypto'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+import { diagExecFile } from '@/server/lib/subprocessDiag'
 
 import config from '@/payload.config'
 import type { Episode, MediaTrack, Show } from '@/payload-types'
-
-const execFileAsync = promisify(execFile)
 
 const LIBRETIME_LIBRARY_ROOT = process.env.LIBRETIME_LIBRARY_ROOT || '/srv/media'
 const MIN_LOOKAHEAD_MINUTES = 20
@@ -178,7 +175,11 @@ interface FfprobeResult {
 async function getAudioTechMetadata(filePath: string): Promise<FfprobeResult> {
   try {
     const args = ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', filePath]
-    const { stdout } = await execFileAsync('ffprobe', args)
+    console.log(
+      `[SUBPROC] deterministicFeed.getAudioTechMetadata execFile: ffprobe args=`,
+      JSON.stringify(args),
+    )
+    const { stdout } = await diagExecFile('ffprobe', args, undefined, 'deterministicFeed.ffprobe')
     const data = JSON.parse(stdout)
     const audioStream = data.streams?.find((stream: any) => stream.codec_type === 'audio')
 
@@ -325,8 +326,10 @@ async function buildFeedItems(
   let totalCount = 0
 
   for (const episode of episodes) {
+    const episodeId = String(episode.id)
+
     if (!episode.scheduledAt || !episode.scheduledEnd) {
-      console.warn('[DETERMINISTIC_FEED] Skipping episode without schedule:', episode.id)
+      console.warn('[DETERMINISTIC_FEED] Skipping episode without schedule:', episodeId)
       continue
     }
 
@@ -334,20 +337,26 @@ async function buildFeedItems(
     const end = new Date(episode.scheduledEnd)
 
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      console.warn('[DETERMINISTIC_FEED] Skipping episode with invalid dates:', episode.id)
+      console.warn('[DETERMINISTIC_FEED] Skipping episode with invalid dates:', episodeId)
       continue
     }
 
     if (end.getTime() <= start.getTime()) {
-      console.warn('[DETERMINISTIC_FEED] Skipping episode with non-positive duration:', episode.id)
+      console.warn('[DETERMINISTIC_FEED] Skipping episode with non-positive duration:', episodeId)
       continue
     }
 
     const relativePath = episode.libretimeFilepathRelative
     if (!relativePath) {
-      console.warn('[DETERMINISTIC_FEED] Skipping episode without libretimeFilepathRelative:', episode.id)
+      console.warn(
+        '[DETERMINISTIC_FEED] Skipping episode without libretimeFilepathRelative:',
+        episodeId,
+      )
       continue
     }
+
+    // SECURITY MONITORING: Log episode being processed with filepath
+    console.log(`[DETERMINISTIC_FEED] Processing episode ${episodeId} filepath="${relativePath}"`)
 
     const absolutePath = ensureDirectorySafety(relativePath)
     totalCount += 1
@@ -356,17 +365,22 @@ async function buildFeedItems(
     try {
       const result = await statWithRetry(absolutePath)
       if (!result) {
-        console.warn('[DETERMINISTIC_FEED] missing', episode.id, '(ENOENT)')
-        missingIds.push(String(episode.id))
+        console.warn(
+          `[DETERMINISTIC_FEED] missing episode ${episodeId} filepath="${relativePath}" (ENOENT)`,
+        )
+        missingIds.push(episodeId)
         missingCount += 1
         if (FEED_STRICT) {
-          throw new Error(`File missing for episode ${episode.id}`)
+          throw new Error(`File missing for episode ${episodeId}`)
         }
         continue
       }
       stats = result
     } catch (error) {
-      console.error('[DETERMINISTIC_FEED] stat failed for episode:', episode.id, error)
+      console.error(
+        `[DETERMINISTIC_FEED] stat failed for episode ${episodeId} filepath="${relativePath}":`,
+        error,
+      )
       throw error
     }
 
@@ -390,7 +404,14 @@ async function buildFeedItems(
       continue
     }
 
+    // SECURITY MONITORING: Log before calling ffprobe
+    console.log(
+      `[DETERMINISTIC_FEED] Calling getTechMetadata for episode ${episodeId} filepath="${relativePath}" absolute="${absolutePath}"`,
+    )
+
     const tech = await getTechMetadata(absolutePath, stats)
+
+    console.log(`[DETERMINISTIC_FEED] getTechMetadata completed for episode ${episodeId}`)
 
     const show = resolveShow(episode)
     const showSlug = show?.slug || null
@@ -403,7 +424,10 @@ async function buildFeedItems(
     const trackIdRaw = episode.libretimeTrackId
     const trackId = trackIdRaw ? Number.parseInt(String(trackIdRaw), 10) : NaN
     if (!Number.isFinite(trackId)) {
-      console.warn('[DETERMINISTIC_FEED] Skipping episode without numeric libretimeTrackId:', episode.id)
+      console.warn(
+        '[DETERMINISTIC_FEED] Skipping episode without numeric libretimeTrackId:',
+        episode.id,
+      )
       continue
     }
 
@@ -412,7 +436,10 @@ async function buildFeedItems(
 
     const durationSec = computeDurationSeconds(start, end)
     if (durationSec <= 0) {
-      console.warn('[DETERMINISTIC_FEED] Skipping episode with zero/negative duration after normalization:', episode.id)
+      console.warn(
+        '[DETERMINISTIC_FEED] Skipping episode with zero/negative duration after normalization:',
+        episode.id,
+      )
       continue
     }
 
@@ -519,7 +546,7 @@ async function computeFeedFromEpisodes(
   const scheduleVersion = getNextVersion()
   const generatedAt = toNaiveUtc(now)
   const lastOkVersionValue =
-    feedStatus === 'ok' ? scheduleVersion : lastOkEntry?.scheduleVersion ?? null
+    feedStatus === 'ok' ? scheduleVersion : (lastOkEntry?.scheduleVersion ?? null)
 
   const feed: DeterministicFeedResponse = {
     scheduleVersion,
@@ -749,5 +776,3 @@ export function resolveMaxItems(param: string | null | undefined): number {
   }
   return clamp(parsed, 1, DEFAULT_MAX_ITEMS)
 }
-
-

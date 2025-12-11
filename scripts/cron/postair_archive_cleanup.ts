@@ -1,4 +1,6 @@
 import 'dotenv/config'
+// GLOBAL SUBPROCESS DIAGNOSTIC PATCH - MUST BE FIRST
+import '../../src/server/lib/subprocessGlobalDiag'
 import fs from 'fs/promises'
 import path from 'path'
 import { execFile } from 'child_process'
@@ -62,7 +64,12 @@ async function callWeeklyRsync(
 
     // SECURITY: Use execFile with array arguments to prevent shell injection
     // Pass EPISODE_ID via environment variable, script path and arguments as array
-    const { stdout, stderr } = await execFileAsync(scriptPath, [workingAbs, destRel], {
+    const execArgs = [workingAbs, destRel]
+    console.log(
+      `[SUBPROC] postair_archive_cleanup.callWeeklyRsync execFile: ${scriptPath} args=`,
+      JSON.stringify(execArgs),
+    )
+    const { stdout, stderr } = await execFileAsync(scriptPath, execArgs, {
       timeout: 300000, // 5 minutes timeout
       env: {
         ...process.env,
@@ -87,10 +94,15 @@ async function callWeeklyRsync(
  */
 async function callHydrateArchivePaths(): Promise<boolean> {
   try {
-    const cmd = `npx tsx scripts/hydrate-archive-paths.ts --log "${LOG_FILE}"`
-    console.log(`🔄 Running: ${cmd}`)
+    const scriptPath = path.join(process.cwd(), 'scripts/hydrate-archive-paths.ts')
+    console.log(`🔄 Running: npx tsx ${scriptPath} --log "${LOG_FILE}"`)
 
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 60000 }) // 1 minute timeout
+    // SECURITY: Use execFile with array arguments to prevent shell injection
+    const { stdout, stderr } = await execFileAsync(
+      'npx',
+      ['tsx', scriptPath, '--log', LOG_FILE],
+      { timeout: 60000 }, // 1 minute timeout
+    )
 
     if (stderr) {
       console.warn(`⚠️ hydrate stderr: ${stderr.trim()}`)
@@ -113,9 +125,14 @@ async function callCleanupImportedFiles(): Promise<boolean> {
     console.log(`🧹 Running: npx tsx ${scriptPath} --log "${LOG_FILE}"`)
 
     // SECURITY: Use execFile with array arguments to prevent shell injection
+    const execArgs = ['tsx', scriptPath, '--log', LOG_FILE]
+    console.log(
+      `[SUBPROC] postair_archive_cleanup.callCleanupImportedFiles execFile: npx args=`,
+      JSON.stringify(execArgs),
+    )
     const { stdout, stderr } = await execFileAsync(
       'npx',
-      ['tsx', scriptPath, '--log', LOG_FILE],
+      execArgs,
       { timeout: 60000 }, // 1 minute timeout
     )
 
