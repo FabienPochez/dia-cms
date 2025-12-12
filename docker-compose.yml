@@ -4,10 +4,9 @@ services:
   payload:
     image: node:18-alpine
     ports:
-      - '3000:3000'
+      - "127.0.0.1:3000:3000"
     volumes:
       - .:/app
-      - ./node_modules:/app/node_modules
       - ./scripts:/app/scripts
       - ./payload/utils:/app/payload/utils
       - /srv/media:/srv/media
@@ -78,7 +77,6 @@ services:
       - build
     volumes:
       - .:/app
-      - ./node_modules:/app/node_modules
       - ./scripts:/app/scripts
       - ./payload/utils:/app/payload/utils
       - /srv/media:/srv/media
@@ -104,7 +102,6 @@ services:
     volumes:
       - .:/app:ro  # Read-only repository mount
       - /srv/media:/srv/media:rw  # Read-write media access
-      - ./node_modules:/app/node_modules  # Reuse existing node_modules volume
     command:
       - sh
       - -c
@@ -118,7 +115,7 @@ services:
 
   # Ensure your DATABASE_URI uses 'mongo' as the hostname ie. mongodb://mongo/my-db-name
   mongo:
-    image: mongo:latest
+    image: mongo:8.2
     ports:
       - '127.0.0.1:27017:27017'  # SECURITY: Bind to localhost only, not 0.0.0.0
     command:

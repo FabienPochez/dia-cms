@@ -18,6 +18,8 @@ export const MediaTracks: CollectionConfig = {
   },
   upload: {
     staticDir: '/srv/media/new',
+    // Allow large uploads; nginx is set to 1G on upload subdomain
+    maxFileSize: 1024 * 1024 * 1024, // 1 GB
     mimeTypes: [
       'audio/mpeg',
       'audio/ogg',

@@ -26,12 +26,16 @@ import UploadErrorLogs from './collections/UploadErrorLogs'
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
-const allowedOrigins = [
-  'https://dia-radio-app.vercel.app',
-  'https://dia-web.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-]
+// Build allowedOrigins from env var or use defaults
+const corsOriginsEnv = process.env.PAYLOAD_CORS_ORIGINS
+const allowedOrigins = corsOriginsEnv
+  ? corsOriginsEnv.split(',').map((origin) => origin.trim())
+  : [
+      'https://dia-radio-app.vercel.app',
+      'https://dia-web.vercel.app',
+      'http://localhost:5173',
+      'http://localhost:3000',
+    ]
 
 //console.log('[payload] Booting with CORS allowedOrigins:', allowedOrigins)
 
@@ -72,7 +76,7 @@ export default buildConfig({
       afterDashboard: ['./admin/components/HostDashboardRedirect'],
     },
   },
-  serverURL: 'https://content.diaradio.live',
+  serverURL: process.env.PAYLOAD_PUBLIC_SERVER_URL || 'https://content.diaradio.live',
 
   collections: [
     Users,

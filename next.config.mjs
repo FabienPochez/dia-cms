@@ -19,10 +19,12 @@ const nextConfig = {
 
     return webpackConfig
   },
-  // Increase body size limit for large audio file uploads (500MB)
+  // Increase body size limit for large audio file uploads (1GB)
+  // Note: serverActions limit applies to Server Actions
+  // Payload handles uploads through its own upload handler
   experimental: {
     serverActions: {
-      bodySizeLimit: '500mb',
+      bodySizeLimit: '1gb',
     },
   },
   typescript: {

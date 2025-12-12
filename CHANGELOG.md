@@ -17,6 +17,53 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-12] - Security: Port Binding Hardening, Subprocess Monitoring Fix, and Upload Limits
+
+### Security
+- **Port 3000 Binding to Localhost Only** – Changed Docker Compose port binding from `3000:3000` to `127.0.0.1:3000:3000` to prevent direct public access to Payload container, forcing all traffic through Nginx/Cloudflare. Location: `docker-compose.yml`
+  - **Issue**: Port 3000 was publicly accessible on all interfaces, bypassing Cloudflare security features
+  - **Fix**: Bound port 3000 to localhost only, ensuring all external access goes through Nginx (ports 80/443)
+  - **Verification**: Direct access to `http://95.216.191.44:3000` now fails (connection refused)
+  - **Additional Protection**: Hetzner firewall also blocks TCP 3000 at network level
+
+- **Subprocess Diagnostic Rate Limiting** – Added rate limiting to subprocess diagnostic monitoring to prevent stack overflow from malicious code calling `execSync` in loops. Location: `src/server/lib/subprocessGlobalDiag.ts`
+  - **Issue**: Malicious code calling `execSync` in tight loops caused stack overflow errors
+  - **Fix**: Implemented rate limiting (1 log per second per command signature) and reduced stack trace frames from 12 to 5
+  - **Impact**: Prevents container crashes while maintaining security monitoring
+  - **Status**: Monitoring still active, but now safe from DoS via rapid subprocess calls
+
+- **Subprocess Diagnostic Disable Option** – Added `DISABLE_SUBPROC_DIAG` environment variable to allow disabling subprocess monitoring if needed. Location: `src/server/lib/subprocessGlobalDiag.ts`
+  - **Usage**: Set `DISABLE_SUBPROC_DIAG=true` in `.env` to disable monitoring
+  - **Note**: Monitoring remains enabled by default for security visibility
+
+### Fixed
+- **Stack Overflow in Subprocess Monitoring** – Fixed stack overflow errors caused by malicious code calling `execSync` in loops by implementing rate limiting
+- **Port 3000 Public Exposure** – Fixed security issue where Payload container was directly accessible on public IP, bypassing Cloudflare
+
+### Changed
+- **Upload File Size Limit Increased** – Increased maximum upload file size from 500MB to 1GB in `MediaTracks` collection and Next.js config. Locations: `src/collections/MediaTracks.ts`, `next.config.mjs`
+  - **MediaTracks**: `maxFileSize` set to `1024 * 1024 * 1024` (1GB)
+  - **Next.js**: `serverActions.bodySizeLimit` increased from `500mb` to `1gb`
+  - **Note**: Nginx already configured for 1GB uploads on upload subdomain
+
+- **CORS Configuration Made Environment-Aware** – Updated `payload.config.ts` to read CORS origins from `PAYLOAD_CORS_ORIGINS` environment variable with fallback to defaults. Location: `src/payload.config.ts`
+  - **Benefit**: Allows CORS configuration without code changes
+  - **Backward Compatible**: Falls back to hardcoded defaults if env var not set
+
+- **Removed Middleware File** – Deleted `src/middleware.ts` as it was not performing any necessary function and was causing Edge Runtime errors
+
+- **Removed node_modules Volume Mounts** – Removed `./node_modules:/app/node_modules` volume mounts from docker-compose.yml as they are not needed and can cause issues
+
+### Documentation
+- **Security Documentation Added** – Added multiple security audit and documentation files to `docs/` directory:
+  - `SECURITY_CHECK_2025-12-12.md` – Security audit report
+  - `PORT_3000_SECURITY_FIX_REVIEWER_PACK.md` – Port binding security fix documentation
+  - `RCE_VULNERABILITY_AUDIT_REVIEWER_PACK.md` – RCE vulnerability investigation
+  - `SUBPROC_DIAG_EXPLANATION.md` – Subprocess diagnostic monitoring explanation
+  - Various other security audit reports moved to `docs/` directory
+
+---
+
 ## [2025-12-09] - Security: Fix Command Injection Vulnerabilities & Refactor Postair Archive Endpoint
 
 ### Security
