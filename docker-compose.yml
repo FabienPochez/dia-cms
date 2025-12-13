@@ -3,13 +3,17 @@ version: '3'
 services:
   payload:
     image: node:18-alpine
+    user: "1000:1000"
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      - .:/app
+      - .:/app:ro
       - ./scripts:/app/scripts
       - ./payload/utils:/app/payload/utils
-      - /srv/media:/srv/media
+      - /srv/media:/srv/media:rw
+    read_only: true
+    tmpfs:
+      - /tmp
     working_dir: /app/
     command:
       - sh
@@ -38,8 +42,9 @@ services:
       - .env
     networks:
       - default
-      - libretime_default
+      
 
+  # WARNING: payload-dev must NOT be used in production (runs as root, writable mounts)
   payload-dev:
     image: node:18-alpine
     profiles:
@@ -69,8 +74,9 @@ services:
       - .env
     networks:
       - default
-      - libretime_default
 
+
+  # WARNING: payload-build must NOT be used in production (runs as root, writable mounts)
   payload-build:
     image: node:18-alpine
     profiles:
@@ -93,7 +99,7 @@ services:
       - .env
     networks:
       - default
-      - libretime_default
+
   jobs:
     image: node:18-alpine
     restart: "no"  # Ephemeral - never auto-restart
@@ -110,7 +116,7 @@ services:
       - .env
     networks:
       - default
-      - libretime_default  # Keep if scripts call LibreTime directly
+
 
 
   # Ensure your DATABASE_URI uses 'mongo' as the hostname ie. mongodb://mongo/my-db-name
@@ -140,6 +146,4 @@ volumes:
   # pgdata:
   node_modules:
 
-networks:
-  libretime_default:
-    external: true
+
