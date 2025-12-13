@@ -160,6 +160,23 @@ function extractSource(stack?: string): { file?: string; function?: string } {
 }
 
 /**
+ * Classify command category for noise filtering
+ */
+function classifyCommandCategory(fullCmd: string): 'internal' | 'media' | 'sync' | 'unknown' {
+  const cmd = fullCmd.toLowerCase()
+  if (cmd.startsWith('git config')) {
+    return 'internal'
+  }
+  if (cmd.startsWith('ffprobe') || cmd.startsWith('ffmpeg')) {
+    return 'media'
+  }
+  if (cmd.includes('rsync')) {
+    return 'sync'
+  }
+  return 'unknown'
+}
+
+/**
  * Determine event type and severity
  * Note: Currently we don't block execution (executed is always true), but structure supports future blocking
  */
@@ -169,13 +186,17 @@ function determineEventType(
   args: string[] | undefined,
   repeatCount: number,
   suppressed: boolean,
+  category: 'internal' | 'media' | 'sync' | 'unknown',
   executionFailed: boolean = false,
 ): { event: string; severity: string; executed: boolean; blocked: boolean } {
   // If logging was suppressed (rate-limited), use special event
+  // Always use DEBUG/INFO for suppressed events (never WARN/ERROR)
+  // Skip repeat escalation for internal noise commands
   if (suppressed) {
+    const severity = category === 'internal' ? 'DEBUG' : 'INFO'
     return {
       event: 'subprocess_log_suppressed',
-      severity: repeatCount >= REPEAT_WARN_THRESHOLD ? 'WARN' : 'INFO',
+      severity,
       executed: true, // Command still executes, only logging is suppressed
       blocked: false, // Execution not blocked
     }
@@ -202,9 +223,12 @@ function determineEventType(
   }
 
   // Suspicious command (not allowlisted)
+  // Skip repeat escalation for internal noise commands
+  const severity =
+    category === 'internal' ? 'INFO' : repeatCount >= REPEAT_WARN_THRESHOLD ? 'WARN' : 'INFO'
   return {
     event: 'subprocess_attempt',
-    severity: repeatCount >= REPEAT_WARN_THRESHOLD ? 'WARN' : 'INFO',
+    severity,
     executed: true,
     blocked: false,
   }
@@ -233,6 +257,9 @@ function logGlobalSubprocess(method: string, command: string, args?: string[], o
     const payloadHash = hashPayload(fullCmd)
     const payloadPreview = createPreview(redactSecrets(fullCmd))
 
+    // Classify command category for noise filtering
+    const category = classifyCommandCategory(fullCmd)
+
     // Determine event type and severity
     // Note: executionFailed is always false currently (we don't catch execution errors yet)
     const { event, severity, executed, blocked } = determineEventType(
@@ -241,6 +268,7 @@ function logGlobalSubprocess(method: string, command: string, args?: string[], o
       args,
       repeatCount,
       suppressed,
+      category,
       false, // executionFailed - future: catch and pass actual failure status
     )
 
@@ -307,6 +335,7 @@ function logGlobalSubprocess(method: string, command: string, args?: string[], o
       executed, // true if command executed (or attempted), false if blocked
       blocked, // true if execution was prevented, false otherwise
       logged: !suppressed, // false if logging was suppressed (rate-limited)
+      category, // internal|media|sync|unknown
       reason: suppressed
         ? 'log_suppressed'
         : isAllowlistedCmd
@@ -361,6 +390,7 @@ function logGlobalSubprocess(method: string, command: string, args?: string[], o
         `executed=${logEntry.executed}`,
         `blocked=${logEntry.blocked}`,
         `logged=${logEntry.logged}`,
+        `category=${logEntry.category}`,
         `reason=${logEntry.reason}`,
         `method=${logEntry.method}`,
         `payload_hash=${logEntry.payload_hash}`,
