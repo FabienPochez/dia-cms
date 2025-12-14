@@ -78,6 +78,130 @@ To do so, follow these steps:
 - Modify the `docker-compose.yml` file's `MONGODB_URI` to match the above `<dbname>`
 - Run `docker-compose up` to start the database, optionally pass `-d` to run in the background.
 
+## Security Invariants (Read Before Deploying)
+
+⚠️ **CRITICAL**: These rules exist because we recovered from a server compromise. They are non-negotiable and must remain true in production. Review this section before any deployment, migration, or DNS change.
+
+### Non-Negotiable Invariants
+
+- ❌ **No application service may listen on a public interface (0.0.0.0) except nginx**
+  - Only nginx on the host may bind to `0.0.0.0:80` and `0.0.0.0:443`
+  - All app services (Payload, LibreTime, MongoDB) must bind to `127.0.0.1` only
+
+- ❌ **Ports 3000 / 8080 / 8001 / 8002 must NEVER be exposed publicly**
+  - These ports are for internal communication only
+  - Verify with: `ss -tulpen | grep -E ':(3000|8080|8001|8002)'` (should show `127.0.0.1` only)
+
+- ✅ **All app services must bind to 127.0.0.1 only**
+  - Docker Compose: Use `127.0.0.1:PORT:PORT` format, never `PORT:PORT`
+  - Verify with: `docker ps --format 'table {{.Names}}\t{{.Ports}}'`
+
+- ✅ **Cloudflare MUST be enabled before traffic is routed**
+  - DNS must point to Cloudflare (proxy enabled) before pointing to server
+  - Never expose a server directly to the internet without Cloudflare protection
+
+- ❌ **DNS must NEVER point to a server before it is fully hardened**
+  - Complete hardening checklist before DNS changes
+  - Verify firewall, SSH, nginx, and Docker configs are secure
+
+### SSH Rules
+
+- ✅ **SSH key-only authentication required**
+  - `PasswordAuthentication no` must be set in `/etc/ssh/sshd_config`
+  - Verify with: `sudo sshd -T | grep passwordauthentication` (should show `no`)
+
+- ✅ **Port 22 restricted by firewall to known IPs**
+  - Hetzner firewall must restrict SSH to trusted IPs only
+  - Never "temporarily open SSH" for convenience
+
+- ❌ **Never enable password authentication, even temporarily**
+  - If you need access, use SSH keys or VPN, not password auth
+
+### Subprocess Execution Rules
+
+- ✅ **Subprocess execution is allowed only via the guarded wrapper**
+  - All subprocess calls must go through `subprocessGlobalDiag.ts` monitoring
+  - No raw `exec()`, `execSync()`, or shell interpolation
+
+- ❌ **No untrusted input passed to subprocesses**
+  - Sanitize all user input before passing to shell commands
+  - Use parameterized commands, never string concatenation
+
+- ⚠️ **If logs show `subprocess_blocked`, treat as a security event**
+  - Investigate immediately: `docker compose logs payload | grep subprocess_blocked`
+  - Blocked commands indicate an attack attempt or misconfiguration
+
+### DNS / Cutover Rules
+
+- ✅ **Hardening always comes BEFORE DNS changes**
+  - Complete security audit before pointing DNS
+  - Verify: firewall, SSH, nginx, Docker, monitoring all configured
+
+- ❌ **Never expose a server "just to test"**
+  - Use SSH tunnels or localhost forwarding for testing
+  - Never temporarily point DNS to an unhardened server
+
+- ✅ **Old servers must be deleted once unused**
+  - Remove DNS records pointing to old servers
+  - Shut down and delete old server instances to prevent confusion
+
+### LibreTime / Streaming Specific
+
+- ⚠️ **Live / streaming DNS must not be repointed unless LibreTime is running and tested locally**
+  - Verify LibreTime is operational: `curl http://localhost:8080/api/v2/status`
+  - Test stream playback locally before DNS cutover
+
+- ❌ **Dead servers must not remain in the DNS path**
+  - Remove DNS records for decommissioned servers immediately
+  - Stale DNS records can cause service disruption and security risks
+
+### What "Normal" Looks Like
+
+- ✅ **Some bot noise at first is normal**
+  - Initial exposure will trigger automated scanners
+  - This is expected and should decrease after hardening
+
+- ✅ **Silence after hardening is expected**
+  - Once properly secured, attack attempts should drop to near zero
+  - Monitor logs: `docker compose logs payload | grep SUBPROC_DIAG`
+
+- ❌ **High attack volume = signal of weakness, not strength**
+  - Sustained high-frequency attacks indicate a vulnerability
+  - Investigate immediately if attack volume increases
+
+### Red Flags
+
+- 🚨 **Reappearance of high-frequency subprocess attempts**
+  - Check: `docker compose logs payload --since 1h | grep subprocess_attempt | wc -l`
+  - If > 10 in an hour, investigate immediately
+
+- 🚨 **WARN/ERROR from unknown subprocess categories**
+  - Check: `docker compose logs payload | grep -E 'severity=(WARN|ERROR).*category=(unknown|media|sync)'`
+  - Unknown categories may indicate an attack
+
+- 🚨 **New public listeners in `ss -tulpen`**
+  - Run: `ss -tulpen | grep -v '127.0.0.1' | grep -v ':22\|:80\|:443'`
+  - Any unexpected listeners are a security risk
+
+- 🚨 **Any need to "quickly open a port"**
+  - This is a red flag indicating poor planning
+  - Use SSH tunnels or proper firewall rules instead
+
+### Pre-Deployment Checklist
+
+Before pointing DNS or deploying to production:
+
+1. ✅ Verify Hetzner firewall: SSH restricted, 80/443 open, nothing else
+2. ✅ Verify SSH: `PasswordAuthentication no`, `PermitRootLogin no`
+3. ✅ Verify nginx: Only 80/443 listeners, all upstreams are `127.0.0.1`
+4. ✅ Verify Docker: All published ports bind to `127.0.0.1` only
+5. ✅ Verify monitoring: Subprocess logging active and reviewed
+6. ✅ Verify secrets: All `.env` files have `chmod 600`, rotated secrets
+7. ✅ Verify Cloudflare: DNS proxy enabled before cutover
+8. ✅ Run security audit: `ss -tulpen`, `docker ps`, `nginx -T`, `sshd -T`
+
+**If any item fails, DO NOT proceed with deployment.**
+
 ## How it works
 
 The Payload config is tailored specifically to the needs of most websites. It is pre-configured in the following ways:
