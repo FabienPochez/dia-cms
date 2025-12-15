@@ -17,6 +17,31 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-15] - Security: Upload Subdomain Rate Limiting (Phase 1)
+
+### Security
+- **Upload Subdomain Rate Limiting** – Added nginx-level rate limiting to upload endpoints on `upload.content.diaradio.live` to prevent abuse and DoS attacks. Location: `/etc/nginx/conf.d/dia-upload-rate-limit.conf`, `/etc/nginx/sites-available/upload.content.diaradio.live`
+  - **Rate Limit**: 10 requests per minute per IP with burst of 20 (allows up to 30 requests in short bursts)
+  - **Zone**: `dia_upload` (10MB shared memory, ~160,000 unique IPs)
+  - **Scope**: Only affects `/api/(media-tracks|media-images|media)` endpoints on upload subdomain
+  - **Status Code**: Returns 429 (Too Many Requests) when limit exceeded
+  - **Rationale**: Upload subdomain is DNS-only (no Cloudflare protection), making nginx rate limiting critical for origin protection
+  - **Impact**: Prevents upload spam and resource exhaustion while allowing legitimate batch uploads via burst allowance
+  - **Reversible**: Simple rollback procedure documented in Reviewer Pack
+
+### Documentation
+- **Rate Limiting Audit** – Added comprehensive audit of all public endpoints to identify rate limiting requirements. Location: `/srv/docs/REVIEWER_PACK_RATE_LIMITING_AUDIT.md`
+  - **Scope**: Audited nginx vhosts (content, schedule, upload) and Payload API endpoints
+  - **Findings**: Identified 14 endpoints requiring rate limiting, categorized by risk level
+  - **Recommendations**: Defined 5 rate limit profiles (AUTH_STRICT, UPLOAD_MODERATE, JOB_STRICT, API_READ_LIGHT, API_WRITE_MODERATE)
+  - **Status**: Phase 1 (upload subdomain) implemented, Phases 2-3 pending approval
+
+- **Upload Rate Limiting Implementation** – Added Reviewer Pack documenting Phase 1 implementation. Location: `/srv/docs/REVIEWER_PACK_UPLOAD_RATE_LIMIT_PHASE1.md`
+  - **Includes**: Unified diffs, verification logs, rollback procedure, tuning notes
+  - **Status**: Implementation complete and verified
+
+---
+
 ## [2025-12-12] - Security: Port Binding Hardening, Subprocess Monitoring Fix, and Upload Limits
 
 ### Security
