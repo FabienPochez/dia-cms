@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '../../../../payload.config'
 import { LibreTimeClient } from '../../../../integrations/libretimeClient'
+import { checkScheduleAuth } from '../../../../lib/auth/checkScheduleAuth'
 
 export const runtime = 'nodejs'
 
@@ -21,6 +22,17 @@ function normalizeToUTC(time: string): string {
 
 export async function DELETE(request: NextRequest) {
   try {
+    // Security: Require admin or staff authentication
+    const auth = await checkScheduleAuth(request)
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          error: auth.error || 'Unauthorized - admin/staff only',
+        },
+        { status: 403 },
+      )
+    }
+
     let body: UnplanOneRequest
 
     // Support both JSON body and querystring fallback
@@ -100,7 +112,7 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error('[SCHEDULE] UnplanOne error:', error)
     console.log(
-      `[SCHEDULE] schedule_unplan_fail episodeId=${episodeId} error=${error instanceof Error ? error.message : 'Unknown error'}`,
+      `[SCHEDULE] schedule_unplan_fail episodeId=${episodeId || 'unknown'} error=${error instanceof Error ? error.message : 'Unknown error'}`,
     )
     return NextResponse.json(
       {

@@ -1,15 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '../../../../payload.config'
+import { checkScheduleAuth } from '../../../../lib/auth/checkScheduleAuth'
 
 export const runtime = 'nodejs'
 
 /**
  * Move a schedule entry in LibreTime
  * Resolves instance ID from episode's parent show
+ * 
+ * Security: Requires admin/staff authentication
  */
 export async function POST(request: NextRequest) {
   try {
+    // Security: Require admin or staff authentication
+    const auth = await checkScheduleAuth(request)
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          error: auth.error || 'Unauthorized - admin/staff only',
+        },
+        { status: 403 },
+      )
+    }
+
     const body = await request.json()
     const { scheduleId, episodeId, startsAt, endsAt } = body
 

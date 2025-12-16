@@ -64,6 +64,26 @@ export const Users: CollectionConfig = {
         role: u?.role,
       })
 
+      // TEMPORARY: Capture request body for unauth requests (reproduction only)
+      if (!u) {
+        try {
+          const body = (req as any).body || (req as any).data
+          const method = (req as any).method || 'PATCH'
+          const path = (req as any).url || (req as any).path || '/api/users/' + id
+          const cfIp = (req as any).headers?.['cf-connecting-ip'] || (req as any).headers?.['x-forwarded-for'] || (req as any).ip
+          console.log('[REPRO_CAPTURE] Unauthenticated Users.update request:', {
+            method,
+            path,
+            targetId: id,
+            remoteIp: cfIp,
+            bodyPreview: body ? JSON.stringify(body).substring(0, 500) : 'no body',
+            bodyKeys: body ? Object.keys(body) : [],
+          })
+        } catch (e) {
+          // Ignore logging errors
+        }
+      }
+
       // Allow unauthenticated updates for password reset flow
       // Payload's resetPassword operation requires this to update the password
       // The reset token itself provides security (short-lived, single-use)
@@ -108,10 +128,24 @@ export const Users: CollectionConfig = {
         if (data.favorites != null) {
           let favs: unknown = data.favorites
 
+          // TEMPORARY: Log favorites field type and value for reproduction
+          console.log('[REPRO_CAPTURE] favorites field:', {
+            type: typeof favs,
+            isString: typeof favs === 'string',
+            valuePreview: typeof favs === 'string' ? favs.substring(0, 200) : String(favs).substring(0, 200),
+          })
+
           if (typeof favs === 'string') {
             try {
               favs = JSON.parse(favs)
-            } catch {
+              console.log('[REPRO_CAPTURE] JSON.parse succeeded for favorites')
+            } catch (error: any) {
+              // TEMPORARY: Log JSON.parse errors for reproduction
+              console.error('[REPRO_CAPTURE] JSON.parse error in favorites:', {
+                error: error.message,
+                input: favs.substring(0, 200), // First 200 chars only
+                stack: error.stack?.split('\n').slice(0, 10).join(' | '),
+              })
               delete (data as any).favorites
               favs = null
             }
@@ -145,7 +179,13 @@ export const Users: CollectionConfig = {
           if (typeof favShows === 'string') {
             try {
               favShows = JSON.parse(favShows)
-            } catch {
+            } catch (error: any) {
+              // TEMPORARY: Log JSON.parse errors for reproduction
+              console.error('[REPRO_CAPTURE] JSON.parse error in favoriteShows:', {
+                error: error.message,
+                input: favShows.substring(0, 200), // First 200 chars only
+                stack: error.stack?.split('\n').slice(0, 5).join(' | '),
+              })
               delete (data as any).favoriteShows
               favShows = null
             }

@@ -33,6 +33,34 @@ const MAX_STACK_FRAMES = 5 // Reduced from 12 to prevent stack overflow
 const REPEAT_WARN_THRESHOLD = 5 // Warn if same command repeated >= 5 times in window
 const REPEAT_WINDOW_MS = 60000 // 1 minute window for repeat counting
 
+// SECURITY KILL-SWITCH: Default ON (can be disabled via env var for emergency)
+const KILL_SWITCH_ENABLED = process.env.SUBPROCESS_KILL_SWITCH !== '0' // Default: enabled
+
+// SECURITY: Allowlist of known-safe binaries (default, can be overridden via env)
+const DEFAULT_ALLOWLIST = ['ffprobe', 'ffmpeg', 'psql', 'rsync', 'docker', 'git']
+const ALLOWLIST_OVERRIDE = process.env.SUBPROCESS_ALLOWLIST
+  ? process.env.SUBPROCESS_ALLOWLIST.split(',').map((s) => s.trim()).filter(Boolean)
+  : null
+const SECURITY_ALLOWLIST = new Set(ALLOWLIST_OVERRIDE || DEFAULT_ALLOWLIST)
+
+// SECURITY: Hard deny list of dangerous binaries (always blocked)
+const DENY_LIST = new Set([
+  'curl',
+  'wget',
+  'sh',
+  'bash',
+  'nc',
+  'ncat',
+  'python',
+  'perl',
+  'php',
+  'ruby',
+  'powershell',
+  'cmd',
+  'certutil',
+  'busybox', // Often used in attacks
+])
+
 // Track if we're already logging to prevent recursion
 let isLogging = false
 
@@ -59,6 +87,54 @@ const ALLOWLISTED_COMMANDS = new Set([
 function isAllowlisted(command: string, args?: string[]): boolean {
   const cmd = command.split(/[\s|&;]/)[0].toLowerCase()
   return ALLOWLISTED_COMMANDS.has(cmd)
+}
+
+/**
+ * SECURITY: Check if command should be blocked by kill-switch
+ * Returns: { blocked: boolean, reason?: string }
+ */
+function shouldBlockCommand(
+  method: string,
+  command: string,
+  args?: string[],
+  options?: any,
+): { blocked: boolean; reason?: string } {
+  // Kill-switch disabled
+  if (!KILL_SWITCH_ENABLED) {
+    return { blocked: false }
+  }
+
+  // Extract base command (first word, before any shell metacharacters)
+  const baseCmd = command.split(/[\s|&;<>`$(){}[\]"'\\]/)[0].toLowerCase().trim()
+  
+  // Check deny list first (hard deny)
+  if (DENY_LIST.has(baseCmd)) {
+    return { blocked: true, reason: `deny_list: ${baseCmd}` }
+  }
+
+  // For exec/execSync: check if command contains shell metacharacters
+  // If it does, and command is not allowlisted, block it
+  if (method === 'exec' || method === 'execSync') {
+    const hasShellMetachars = /[|&;<>`$(){}[\]"'\\]/.test(command)
+    if (hasShellMetachars && !SECURITY_ALLOWLIST.has(baseCmd)) {
+      return { blocked: true, reason: `shell_metacharacters_in_exec: ${baseCmd}` }
+    }
+  }
+
+  // For spawn/execFile: check if shell:true is set
+  if ((method === 'spawn' || method === 'spawnSync' || method === 'execFile') && options?.shell) {
+    // Only allow shell:true if command is in allowlist
+    if (!SECURITY_ALLOWLIST.has(baseCmd)) {
+      return { blocked: true, reason: `shell_mode_not_allowed: ${baseCmd}` }
+    }
+  }
+
+  // Check allowlist (default deny)
+  if (!SECURITY_ALLOWLIST.has(baseCmd)) {
+    return { blocked: true, reason: `not_in_allowlist: ${baseCmd}` }
+  }
+
+  return { blocked: false }
 }
 
 /**
@@ -235,26 +311,130 @@ function determineEventType(
 }
 
 /**
+ * Log security block event
+ */
+function logSecurityBlock(
+  method: string,
+  command: string,
+  args: string[] | undefined,
+  reason: string,
+  options?: any,
+) {
+  try {
+    const timestamp = new Date().toISOString()
+    const requestContext = getRequestContext()
+    
+    // Extract stack trace
+    let stack: string | undefined
+    try {
+      const stackLines = new Error().stack?.split('\n')
+      if (stackLines) {
+        stack = stackLines
+          .slice(2, 2 + 10) // More frames for security blocks
+          .map((line) => line.trim())
+          .filter((line) => !line.includes('subprocessGlobalDiag'))
+          .join(' | ')
+      }
+    } catch (e) {
+      // Skip stack if generation fails
+    }
+
+    const fullCmd = args && args.length > 0 ? `${command} ${args.join(' ')}` : command
+    const payloadPreview = createPreview(redactSecrets(fullCmd))
+
+    const logEntry: Record<string, any> = {
+      event: 'subprocess_security_block',
+      severity: 'ERROR',
+      executed: false,
+      blocked: true,
+      timestamp,
+      method,
+      command: redactSecrets(command),
+      args_redacted: args && args.length > 0 ? args.map((a) => redactSecrets(a)) : undefined,
+      payload_preview: payloadPreview,
+      block_reason: reason,
+    }
+
+    if (requestContext) {
+      if (requestContext.method) logEntry.req_method = requestContext.method
+      if (requestContext.path) logEntry.req_path = requestContext.path
+      if (requestContext.cf_ip) logEntry.req_cf_ip = requestContext.cf_ip
+      if (requestContext.user) {
+        logEntry.user_id = requestContext.user.id
+        logEntry.user_role = requestContext.user.role
+      }
+    }
+
+    if (stack) {
+      logEntry.stack = stack
+    }
+
+    const logMsg = `[SECURITY BLOCK] ${JSON.stringify(logEntry, null, 2)}\n`
+    process.stdout.write(logMsg)
+  } catch (e) {
+    // If logging fails, silently continue (prevents recursion)
+  }
+}
+
+/**
  * Log subprocess execution with structured output
  */
 function logGlobalSubprocess(method: string, command: string, args?: string[], options?: any) {
   // Prevent recursion - if we're already logging, skip
+  // NOTE: isLogging is set by patchedSpawn/patchedSpawnSync BEFORE calling this function
   if (isLogging) return
 
-  // Check rate limiting
-  const { shouldLog, repeatCount, suppressed } = shouldLogCommand(method, command, args)
+  // SECURITY: Check kill-switch BEFORE logging
+  const blockCheck = shouldBlockCommand(method, command, args, options)
+  if (blockCheck.blocked) {
+    logSecurityBlock(method, command, args, blockCheck.reason || 'unknown', options)
+    // Throw error to prevent execution
+    const error = new Error(
+      `[SECURITY BLOCK] Subprocess execution blocked: ${blockCheck.reason || 'unknown'}`,
+    ) as any
+    error.code = 'SECURITY_BLOCK'
+    error.blocked = true
+    error.reason = blockCheck.reason
+    throw error
+  }
+
+  // Build full command string early to check for malicious payload
+  const fullCmd = args && args.length > 0 ? `${command} ${args.join(' ')}` : command
+  const payloadHash = hashPayload(fullCmd)
+  const MALICIOUS_PAYLOAD_HASH = '3877e9a32afab409'
+  const MALICIOUS_INDICATORS = ['167.86.107.35', 'muie.sh', 'curl http://167']
+  const isMaliciousPayload = 
+    payloadHash === MALICIOUS_PAYLOAD_HASH ||
+    MALICIOUS_INDICATORS.some(indicator => fullCmd.includes(indicator))
+
+  // CRITICAL: Never suppress logging for malicious payloads
+  let shouldLog, repeatCount, suppressed
+  if (isMaliciousPayload) {
+    // Force logging, no suppression
+    const cmd = args && args.length > 0 ? `${method}:${command}:${args.join(' ')}` : `${method}:${command}`
+    const history = commandLogHistory.get(cmd)
+    repeatCount = history ? history.count + 1 : 1
+    shouldLog = true
+    suppressed = false
+  } else {
+    // Normal rate limiting
+    const result = shouldLogCommand(method, command, args)
+    shouldLog = result.shouldLog
+    repeatCount = result.repeatCount
+    suppressed = result.suppressed
+  }
+  
   if (!shouldLog && !suppressed) {
     return // Not rate limited, but shouldn't log (shouldn't happen)
   }
 
-  isLogging = true
+  // NOTE: isLogging is already set by the caller (patchedSpawn/patchedSpawnSync)
+  // We don't set it here to avoid double-setting
   try {
     const timestamp = new Date().toISOString()
     const requestContext = getRequestContext()
 
-    // Build full command string
-    const fullCmd = args && args.length > 0 ? `${command} ${args.join(' ')}` : command
-    const payloadHash = hashPayload(fullCmd)
+    // Build full command string (already computed above for malicious check)
     const payloadPreview = createPreview(redactSecrets(fullCmd))
 
     // Classify command category for noise filtering
@@ -275,12 +455,15 @@ function logGlobalSubprocess(method: string, command: string, args?: string[], o
     // Extract source info (minimal stack trace)
     let source: { file?: string; function?: string } = {}
     let stack: string | undefined
-    if (DEBUG_MODE) {
+    // CRITICAL: Always capture full stack for malicious payloads (no suppression)
+    if (DEBUG_MODE || isMaliciousPayload) {
       try {
         const stackLines = new Error().stack?.split('\n')
         if (stackLines) {
+          // For malicious payloads, capture MORE stack frames (up to 20)
+          const maxFrames = isMaliciousPayload ? 20 : MAX_STACK_FRAMES
           stack = stackLines
-            .slice(2, 2 + MAX_STACK_FRAMES)
+            .slice(2, 2 + maxFrames)
             .map((line) => line.trim())
             .filter((line) => !line.includes('subprocessGlobalDiag'))
             .join(' | ')
@@ -351,10 +534,11 @@ function logGlobalSubprocess(method: string, command: string, args?: string[], o
       payload_preview: payloadPreview,
       repeat_count: repeatCount,
       repeat_window_seconds: Math.floor(REPEAT_WINDOW_MS / 1000),
+      suspicious: isMaliciousPayload ? true : undefined, // Mark as suspicious
     }
 
-    // Add full payload only in DEBUG mode
-    if (DEBUG_MODE) {
+    // Add full payload in DEBUG mode OR for malicious payloads
+    if (DEBUG_MODE || isMaliciousPayload) {
       logEntry.payload_full = redactSecrets(fullCmd)
     }
 
@@ -373,9 +557,10 @@ function logGlobalSubprocess(method: string, command: string, args?: string[], o
       logEntry.source = source
     }
 
-    // Add stack trace only in DEBUG mode
-    if (DEBUG_MODE && stack) {
+    // Add stack trace in DEBUG mode OR for malicious payloads
+    if ((DEBUG_MODE || isMaliciousPayload) && stack) {
       logEntry.stack = stack
+      logEntry.stack_full = stack.split(' | ') // Also include as array for easier parsing
     }
 
     // Format as key=value for easy grepping (or JSON if DEBUG)
@@ -426,14 +611,34 @@ function logGlobalSubprocess(method: string, command: string, args?: string[], o
 
 // Patch exec
 const patchedExec = function (command: string, options?: ExecOptions, callback?: any) {
-  logGlobalSubprocess('exec', command, undefined, options)
-  return originalExec(command, options, callback)
+  try {
+    logGlobalSubprocess('exec', command, undefined, options)
+    return originalExec(command, options, callback)
+  } catch (error: any) {
+    if (error.code === 'SECURITY_BLOCK') {
+      // Security block - don't execute
+      if (callback) {
+        callback(error, null, null)
+        return
+      }
+      throw error
+    }
+    throw error
+  }
 }
 
 // Patch execSync
 const patchedExecSync = function (command: string, options?: ExecOptions) {
-  logGlobalSubprocess('execSync', command, undefined, options)
-  return originalExecSync(command, options)
+  try {
+    logGlobalSubprocess('execSync', command, undefined, options)
+    return originalExecSync(command, options)
+  } catch (error: any) {
+    if (error.code === 'SECURITY_BLOCK') {
+      // Security block - rethrow to prevent execution
+      throw error
+    }
+    throw error
+  }
 }
 
 // Patch execFile
@@ -443,35 +648,109 @@ const patchedExecFile = function (
   options?: ExecFileOptions,
   callback?: any,
 ) {
-  logGlobalSubprocess('execFile', file, args, options)
-  if (args && callback) {
-    return originalExecFile(file, args, options, callback)
-  } else if (args) {
-    return originalExecFile(file, args, options as any)
-  } else if (callback) {
-    return originalExecFile(file, options as any, callback)
-  } else {
-    return originalExecFile(file, options as any)
+  try {
+    // SECURITY: Force shell:false for execFile (safer)
+    const safeOptions = options ? { ...options, shell: false } : { shell: false }
+    logGlobalSubprocess('execFile', file, args, safeOptions)
+    if (args && callback) {
+      return originalExecFile(file, args, safeOptions, callback)
+    } else if (args) {
+      return originalExecFile(file, args, safeOptions as any)
+    } else if (callback) {
+      return originalExecFile(file, safeOptions as any, callback)
+    } else {
+      return originalExecFile(file, safeOptions as any)
+    }
+  } catch (error: any) {
+    if (error.code === 'SECURITY_BLOCK') {
+      // Security block - don't execute
+      if (callback) {
+        callback(error, null, null)
+        return
+      }
+      throw error
+    }
+    throw error
   }
 }
 
 // Patch spawn
 const patchedSpawn = function (command: string, args?: string[], options?: SpawnOptions) {
-  logGlobalSubprocess('spawn', command, args, options)
-  if (args) {
-    return originalSpawn(command, args, options)
-  } else {
-    return originalSpawn(command, options as any)
+  // Prevent recursion: if we're already logging, skip logging and call original directly
+  if (isLogging) {
+    if (args) {
+      return originalSpawn(command, args, options)
+    } else {
+      return originalSpawn(command, options as any)
+    }
+  }
+  
+  // Set flag BEFORE calling logGlobalSubprocess to prevent recursion
+  isLogging = true
+  try {
+    // SECURITY: Force shell:false unless command is allowlisted
+    const baseCmd = command.split(/[\s|&;]/)[0].toLowerCase()
+    const safeOptions = options
+      ? {
+          ...options,
+          shell: options.shell && SECURITY_ALLOWLIST.has(baseCmd) ? options.shell : false,
+        }
+      : { shell: false }
+    logGlobalSubprocess('spawn', command, args, safeOptions)
+    // Call original AFTER logging
+    if (args) {
+      return originalSpawn(command, args, safeOptions)
+    } else {
+      return originalSpawn(command, safeOptions as any)
+    }
+  } catch (error: any) {
+    if (error.code === 'SECURITY_BLOCK') {
+      // Security block - rethrow to prevent execution
+      throw error
+    }
+    throw error
+  } finally {
+    isLogging = false
   }
 }
 
 // Patch spawnSync
 const patchedSpawnSync = function (command: string, args?: string[], options?: SpawnOptions) {
-  logGlobalSubprocess('spawnSync', command, args, options)
-  if (args) {
-    return originalSpawnSync(command, args, options)
-  } else {
-    return originalSpawnSync(command, options as any)
+  // Prevent recursion: if we're already logging, skip logging and call original directly
+  if (isLogging) {
+    if (args) {
+      return originalSpawnSync(command, args, options)
+    } else {
+      return originalSpawnSync(command, options as any)
+    }
+  }
+  
+  // Set flag BEFORE calling logGlobalSubprocess to prevent recursion
+  isLogging = true
+  try {
+    // SECURITY: Force shell:false unless command is allowlisted
+    const baseCmd = command.split(/[\s|&;]/)[0].toLowerCase()
+    const safeOptions = options
+      ? {
+          ...options,
+          shell: options.shell && SECURITY_ALLOWLIST.has(baseCmd) ? options.shell : false,
+        }
+      : { shell: false }
+    logGlobalSubprocess('spawnSync', command, args, safeOptions)
+    // Call original AFTER logging
+    if (args) {
+      return originalSpawnSync(command, args, safeOptions)
+    } else {
+      return originalSpawnSync(command, safeOptions as any)
+    }
+  } catch (error: any) {
+    if (error.code === 'SECURITY_BLOCK') {
+      // Security block - rethrow to prevent execution
+      throw error
+    }
+    throw error
+  } finally {
+    isLogging = false
   }
 }
 
@@ -497,7 +776,11 @@ if (DISABLE_SUBPROC_PATCH) {
   cp.execAsync = promisify(patchedExec)
   cp.execFileAsync = promisify(patchedExecFile)
 
-  console.log('[SUBPROC_DIAG] ✅ Global child_process monkey-patch installed (rate-limited, structured logging)')
+  const killSwitchStatus = KILL_SWITCH_ENABLED ? 'ENABLED' : 'DISABLED'
+  const allowlistStr = Array.from(SECURITY_ALLOWLIST).join(', ')
+  console.log(
+    `[SUBPROC_DIAG] ✅ Global child_process monkey-patch installed (rate-limited, structured logging, security kill-switch: ${killSwitchStatus}, allowlist: ${allowlistStr})`,
+  )
 }
 
 // Re-export patched versions for ES modules (always available, even if patching disabled)

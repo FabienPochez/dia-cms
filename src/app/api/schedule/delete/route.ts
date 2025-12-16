@@ -1,15 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '../../../../payload.config'
+import { checkScheduleAuth } from '../../../../lib/auth/checkScheduleAuth'
 
 export const runtime = 'nodejs'
 
 /**
  * Delete a schedule entry in LibreTime
  * Resolves instance ID from episode's parent show
+ * 
+ * Security: Requires admin/staff authentication
  */
 export async function DELETE(request: NextRequest) {
   try {
+    // Security: Require admin or staff authentication
+    const auth = await checkScheduleAuth(request)
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          error: auth.error || 'Unauthorized - admin/staff only',
+        },
+        { status: 403 },
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const scheduleId = searchParams.get('scheduleId')
     const episodeId = searchParams.get('episodeId')

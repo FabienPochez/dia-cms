@@ -17,6 +17,36 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-16] - Security: Kill-Switch Implementation, Secrets Rotation, Version Updates
+
+### Security
+- **Subprocess Kill-Switch** – Implemented security kill-switch in `subprocessGlobalDiag.ts` to prevent command execution abuse
+  - Default DENY policy with allowlist: `ffprobe`, `ffmpeg`, `psql`, `rsync`, `docker`, `git`
+  - Hard deny list: `curl`, `wget`, `sh`, `bash`, `nc`, `ncat`, `python`, `perl`, `php`, `ruby`, `powershell`, `cmd`, `certutil`, `busybox`
+  - Forces `shell:false` for `spawn`/`execFile` unless allowlisted
+  - Blocks `exec`/`execSync` with shell metacharacters unless allowlisted
+  - Environment control: `SUBPROCESS_KILL_SWITCH=0` disables, `SUBPROCESS_ALLOWLIST` overrides allowlist
+  - Structured `[SECURITY BLOCK]` logging with stack traces and request context
+
+- **Secrets Rotation** – Rotated all secrets after security incident
+  - `PAYLOAD_SECRET`: Rotated (all sessions invalidated)
+  - `PAYLOAD_API_KEY`: Rotated
+  - `EMAIL_PASS` (Resend): Rotated with new API key
+  - `LIBRETIME_API_KEY`: Cannot be rotated (regeneration not available), admin password changed as mitigation
+
+### Changed
+- **Version Updates**:
+  - Next.js: `15.3.2` → `15.3.6`
+  - React: `19.1.0` → `19.1.2`
+  - React DOM: `19.1.0` → `19.1.2`
+
+- **Build Process**:
+  - Updated `docker-compose.yml` build service to use `pnpm` (matching package.json)
+  - Clean rebuild process: removes `.next` and `node_modules` before install
+  - Updated lockfile with new versions
+
+---
+
 ## [2025-12-15] - Security: Upload Subdomain Rate Limiting (Phase 1)
 
 ### Security

@@ -92,9 +92,14 @@ services:
       - -c
       - |
         apk add --no-cache ffmpeg libheif libde265 || echo "⚠️  Some packages may not install (non-critical)" && \
+        corepack enable pnpm && \
+        echo "🧹 Cleaning previous build artifacts..." && \
         rm -rf .next node_modules && \
-        npm ci --include=dev && \
-        npm run build
+        echo "📦 Installing dependencies with pnpm (updating lockfile)..." && \
+        pnpm install && \
+        echo "🔨 Building application..." && \
+        pnpm run build && \
+        echo "✅ Build complete!"
     env_file:
       - .env
     networks:

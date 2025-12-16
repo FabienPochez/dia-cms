@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '../../../../payload.config'
 import { LibreTimeClient } from '../../../../integrations/libretimeClient'
+import { checkScheduleAuth } from '../../../../lib/auth/checkScheduleAuth'
 
 export const runtime = 'nodejs'
 
@@ -33,6 +34,17 @@ function intervalsOverlap(start1: string, end1: string, start2: string, end2: st
 
 export async function POST(request: NextRequest) {
   try {
+    // Security: Require admin or staff authentication
+    const auth = await checkScheduleAuth(request)
+    if (!auth.authorized) {
+      return NextResponse.json(
+        {
+          error: auth.error || 'Unauthorized - admin/staff only',
+        },
+        { status: 403 },
+      )
+    }
+
     const body: PlanOneRequest = await request.json()
     const { showId, episodeId, scheduledAt, scheduledEnd } = body
 
@@ -303,7 +315,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[SCHEDULE] PlanOne error:', error)
     console.log(
-      `[SCHEDULE] schedule_plan_fail episodeId=${episodeId} error=${error instanceof Error ? error.message : 'Unknown error'}`,
+      `[SCHEDULE] schedule_plan_fail episodeId=${episodeId || 'unknown'} error=${error instanceof Error ? error.message : 'Unknown error'}`,
     )
     return NextResponse.json(
       {
