@@ -35,7 +35,6 @@
     "@payloadcms/payload-cloud": "3.48.0",
     "@payloadcms/richtext-lexical": "3.48.0",
     "@payloadcms/ui": "3.48.0",
-    "@types/glob": "^9.0.0",
     "@types/mime-types": "^3.0.1",
     "axios": "^1.10.0",
     "date-fns": "^3.0.0",
@@ -71,7 +70,6 @@
     "playwright": "1.50.0",
     "playwright-core": "1.50.0",
     "prettier": "^3.4.2",
-    "ts-node": "^10.9.2",
     "typescript": "^5.7.3",
     "vite-tsconfig-paths": "5.1.4",
     "vitest": "3.2.3"

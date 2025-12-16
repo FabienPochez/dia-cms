@@ -15,6 +15,11 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [Unreleased]
 
+### Removed
+- **Unused Dependencies** – Removed unused packages from `package.json`:
+  - `@types/glob` (deprecated stub, glob provides its own types)
+  - `ts-node` (replaced by `tsx` in npm scripts)
+
 ---
 
 ## [2025-12-16] - Security: Kill-Switch Implementation, Secrets Rotation, Version Updates

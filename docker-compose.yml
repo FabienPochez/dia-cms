@@ -8,6 +8,7 @@ services:
       - "127.0.0.1:3000:3000"
     volumes:
       - .:/app:ro
+      - /tmp/empty-git:/app/.git
       - ./scripts:/app/scripts
       - ./payload/utils:/app/payload/utils
       - /srv/media:/srv/media:rw
