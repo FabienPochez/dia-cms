@@ -62,17 +62,20 @@ DELETE /api/schedule/unplanOne?episodeId=xxx&scheduledAt=2025-12-01T10:00:00Z
 
 ### Required Environment Variables
 ```bash
-LIBRETIME_URL=https://schedule.diaradio.live
-LIBRETIME_API_URL=https://schedule.diaradio.live
-LIBRETIME_API_KEY=cee870b7f12f65edec103a9c02987697
+# Server-to-server LibreTime base URL (preferred: internal Docker DNS; avoids Cloudflare)
+LIBRETIME_API_URL=http://nginx:8080
+LIBRETIME_API_KEY=your_libretime_api_key_here
+
+# Optional: LibreTime base URL for legacy endpoints (e.g. /rest/*). Align to internal to avoid Cloudflare.
+LIBRETIME_URL=http://nginx:8080
 ```
 
-**Important**: Use external URL (`https://schedule.diaradio.live`) not internal Docker network URL.
+**Important**: Payload ↔ LibreTime backend HTTP must use `LIBRETIME_API_URL` and should stay **internal** (e.g. `http://nginx:8080`) to avoid Cloudflare challenges.
 
 ### Docker Network Configuration
-- Payload containers: `payload_default` network
-- LibreTime containers: `libretime_default` network  
-- Payload container connected to both networks via `docker-compose.yml`
+- Payload containers: `payload_default` network + shared external `dia_internal`
+- LibreTime containers: `libretime_default` network + shared external `dia_internal` (**nginx only**)
+- Payload talks to LibreTime via internal DNS name `nginx:8080` on `dia_internal` (host bind stays `127.0.0.1:8080`)
 
 ## Known Issues & Workarounds
 
@@ -167,13 +170,13 @@ Added fields:
 ### LibreTime API Verification
 ```bash
 # Check shows
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/shows"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/shows"
 
 # Check instances for show
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/show-instances?show=13"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/show-instances?show=13"
 
 # Check playouts for instance  
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/schedule?instance=15"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/schedule?instance=15"
 ```
 
 ## Future Improvements

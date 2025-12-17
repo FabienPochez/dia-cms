@@ -45,9 +45,9 @@ This document tracks the integration status between Payload CMS Planner and Libr
 
 ### Environment Configuration
 ```bash
-LIBRETIME_URL=https://schedule.diaradio.live
-LIBRETIME_API_URL=https://schedule.diaradio.live
-LIBRETIME_API_KEY=cee870b7f12f65edec103a9c02987697
+LIBRETIME_URL=http://nginx:8080
+LIBRETIME_API_URL=http://nginx:8080
+LIBRETIME_API_KEY=your_libretime_api_key_here
 ```
 
 ### Key Files Modified
@@ -175,8 +175,8 @@ curl -X DELETE "http://payload-payload-1:3000/api/schedule/unplanOne" \
 ### Environment Variables Required
 ```bash
 # LibreTime Configuration
-LIBRETIME_URL=https://schedule.diaradio.live
-LIBRETIME_API_URL=https://schedule.diaradio.live
+LIBRETIME_URL=http://nginx:8080
+LIBRETIME_API_URL=http://nginx:8080
 LIBRETIME_API_KEY=your_api_key_here
 
 # Optional
@@ -184,8 +184,9 @@ ALLOW_NAME_MATCH=false  # Allow show name matching
 ```
 
 ### Docker Configuration
-- Payload container must be connected to `libretime_default` network
-- External LibreTime API URL must be accessible
+- Payload container must be connected to the shared external network (`dia_internal`)
+- LibreTime nginx must be connected to the same shared external network (service name `nginx`)
+- `LIBRETIME_API_URL` should use internal DNS (`http://nginx:8080`) to avoid Cloudflare challenges
 - Environment variables loaded from `.env` file
 
 ### Database Migrations
@@ -207,7 +208,7 @@ ALLOW_NAME_MATCH=false  # Allow show name matching
 docker exec payload-payload-1 env | grep LIBRETIME
 
 # Test LibreTime API
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/"
 
 # Check Payload logs
 docker logs payload-payload-1 --tail 20

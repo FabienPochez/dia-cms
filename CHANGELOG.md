@@ -41,6 +41,26 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-17] - Payload ↔ LibreTime Internal Networking (No Cloudflare)
+
+### Changed
+- **Internal LibreTime HTTP (No Cloudflare)** – Standardized all server-to-server LibreTime calls to use internal Docker DNS (`http://nginx:8080`) instead of the public Cloudflare-proxied domain.
+  - Created a shared external Docker network: `dia_internal`
+  - Attached LibreTime `nginx` service to `dia_internal` (LibreTime host bind remains `127.0.0.1:8080->8080`)
+  - Attached Payload `payload` service to `dia_internal`
+  - Attached Payload `jobs` service to `dia_internal` (cron-related scripts that call LibreTime now resolve via internal DNS)
+
+### Fixed
+- **Planner sync 500 (Cloudflare challenge)** – Payload schedule sync endpoints no longer route through Cloudflare; internal LibreTime API calls now return JSON responses from `nginx` directly.
+
+### Documentation
+- **Canonical health probe** – Replaced references to `/api/v2/status` (404 on this LibreTime deployment) with the canonical probe:
+  - `GET /api/v2/schedule?limit=1` (with `Authorization: Api-Key <key>`)
+- Clarified runtime env source-of-truth: Payload containers load environment variables via `env_file: .env` from `/srv/payload/.env`.
+- Aligned docs to reflect internal `LIBRETIME_API_URL` and `LIBRETIME_URL` usage (both `http://nginx:8080` in production to avoid Cloudflare).
+
+---
+
 ## [2025-12-16] - Security: Kill-Switch Implementation, Secrets Rotation, Version Updates
 
 ### Security

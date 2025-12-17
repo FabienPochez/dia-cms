@@ -208,8 +208,8 @@ useEffect(() => {
 ### Environment Variables
 ```bash
 # LibreTime Integration
-LIBRETIME_URL=https://schedule.diaradio.live
-LIBRETIME_API_URL=https://schedule.diaradio.live
+LIBRETIME_URL=http://nginx:8080
+LIBRETIME_API_URL=http://nginx:8080
 LIBRETIME_API_KEY=your_api_key
 
 # UI Configuration

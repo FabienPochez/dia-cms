@@ -43,6 +43,7 @@ services:
       - .env
     networks:
       - default
+      - dia_internal
       
 
   # WARNING: payload-dev must NOT be used in production (runs as root, writable mounts)
@@ -138,6 +139,7 @@ services:
       - CONTAINER_TYPE=jobs
     networks:
       - default
+      - dia_internal
 
 
 
@@ -167,5 +169,11 @@ volumes:
   data:
   # pgdata:
   node_modules:
+
+networks:
+  default: {}
+  dia_internal:
+    external: true
+    name: dia_internal
 
 

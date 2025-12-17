@@ -34,8 +34,8 @@ Create `.env` file in project root:
 DATABASE_URI=mongodb://mongo:27017/payload
 
 # LibreTime Integration
-LIBRETIME_URL=https://schedule.diaradio.live
-LIBRETIME_API_URL=https://schedule.diaradio.live
+LIBRETIME_URL=http://nginx:8080
+LIBRETIME_API_URL=http://nginx:8080
 LIBRETIME_API_KEY=your_libretime_api_key_here
 
 # Optional
@@ -85,7 +85,7 @@ docker exec payload-mongo-1 mongorestore /data/backup
 ### 3. LibreTime Integration
 ```bash
 # Test LibreTime API
-curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "https://schedule.diaradio.live/api/v2/"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/"
 
 # Test scheduling
 curl -X POST "http://localhost:3000/api/schedule/planOne" \
@@ -323,8 +323,8 @@ docker-compose -f docker-compose.prod.yml up -d
 DATABASE_URI=mongodb://mongo:27017/payload
 
 # LibreTime
-LIBRETIME_URL=https://schedule.diaradio.live
-LIBRETIME_API_URL=https://schedule.diaradio.live
+LIBRETIME_URL=http://nginx:8080
+LIBRETIME_API_URL=http://nginx:8080
 LIBRETIME_API_KEY=production_api_key
 
 # Security
@@ -339,8 +339,8 @@ NEXTAUTH_URL=https://your-domain.com
 # Check Payload health
 curl http://localhost:3000/api/health
 
-# Check LibreTime API
-curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "https://schedule.diaradio.live/api/v2/"
+# Check LibreTime API (canonical probe)
+curl -fsS -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/schedule?limit=1" | head -c 200
 
 # Check database
 docker exec payload-mongo-1 mongosh --eval "db.runCommand('ping')"

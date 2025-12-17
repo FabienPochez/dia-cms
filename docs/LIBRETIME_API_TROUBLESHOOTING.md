@@ -18,16 +18,16 @@ Wrong `LIBRETIME_API_URL` environment variable
 docker exec payload-payload-1 env | grep LIBRETIME_API_URL
 
 # Should be:
-LIBRETIME_API_URL=https://schedule.diaradio.live
+LIBRETIME_API_URL=http://nginx:8080
 
 # NOT:
-LIBRETIME_API_URL=http://libretime_nginx_1:8080
+LIBRETIME_API_URL=https://schedule.diaradio.live
 ```
 
 **Fix:**
 1. Update `/srv/payload/.env`:
    ```bash
-   LIBRETIME_API_URL=https://schedule.diaradio.live
+   LIBRETIME_API_URL=http://nginx:8080
    ```
 2. Restart Payload container:
    ```bash
@@ -53,7 +53,7 @@ const existingInstances = allInstances.filter((instance) => instance.show === sh
 **Verification:**
 ```bash
 # This should return instances for show 13 only, but returns all instances
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/show-instances?show=13"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/show-instances?show=13"
 ```
 
 ### 3. Missing Required Fields
@@ -142,18 +142,14 @@ export class LibreTimeError extends Error { ... }
 Docker network configuration issues
 
 **Solution:**
-Always use external URL for LibreTime API:
-- ✅ `https://schedule.diaradio.live`
-- ❌ `http://libretime_nginx_1:8080`
-- ❌ `http://libretime_nginx_1:8080`
+For **server-to-server** calls, use the internal Docker DNS name (avoids Cloudflare):
+- ✅ `http://nginx:8080` (internal, on shared network)
+- ❌ `https://schedule.diaradio.live` (public/Cloudflare, may challenge)
 
 **Verification:**
 ```bash
-# Test external URL (should work)
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/"
-
-# Test internal URL (may fail)
-curl -H "Authorization: Api-Key $API_KEY" "http://libretime_nginx_1:8080/api/v2/"
+# Canonical health probe (recommended)
+curl -fsS -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/schedule?limit=1" | head -c 200
 ```
 
 ### Container Network Configuration
@@ -164,11 +160,12 @@ services:
   payload:
     networks:
       - default
-      - libretime_default  # Connect to LibreTime network
+      - dia_internal  # Shared external network with LibreTime nginx
 
 networks:
-  libretime_default:
-    external: true  # Use existing LibreTime network
+  dia_internal:
+    external: true
+    name: dia_internal
 ```
 
 ## API Response Debugging
@@ -176,16 +173,16 @@ networks:
 ### Check LibreTime API Status
 ```bash
 # Test basic connectivity
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/"
 
 # Check shows
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/shows"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/shows"
 
 # Check instances for specific show
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/show-instances?show=13"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/show-instances?show=13"
 
 # Check playouts for specific instance
-curl -H "Authorization: Api-Key $API_KEY" "https://schedule.diaradio.live/api/v2/schedule?instance=15"
+curl -H "Authorization: Api-Key $LIBRETIME_API_KEY" "$LIBRETIME_API_URL/api/v2/schedule?instance=15"
 ```
 
 ### Check Payload Logs

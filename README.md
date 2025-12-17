@@ -148,7 +148,7 @@ To do so, follow these steps:
 ### LibreTime / Streaming Specific
 
 - ⚠️ **Live / streaming DNS must not be repointed unless LibreTime is running and tested locally**
-  - Verify LibreTime is operational: `curl http://localhost:8080/api/v2/status`
+- Verify LibreTime is operational (**canonical probe**): `curl -fsS -H "Authorization: Api-Key $LIBRETIME_API_KEY" "http://localhost:8080/api/v2/schedule?limit=1" | head -c 200`
   - Test stream playback locally before DNS cutover
 
 - ❌ **Dead servers must not remain in the DNS path**
@@ -1320,9 +1320,15 @@ curl -X POST /api/lifecycle/rehydrate \
 #### Required
 ```bash
 # LibreTime API
-LIBRETIME_API_URL=https://schedule.diaradio.live
+#
+# Server-to-server LibreTime base URL (used by Payload backend + jobs).
+# In production, prefer the internal Docker DNS name via the shared network (no Cloudflare).
+LIBRETIME_API_URL=http://nginx:8080
 LIBRETIME_API_KEY=your_api_key
 LIBRETIME_LIBRARY_ROOT=/srv/media
+
+# Optional: LibreTime base URL for legacy endpoints (e.g. /rest/*). Kept internal to avoid Cloudflare.
+LIBRETIME_URL=http://nginx:8080
 
 # Payload CMS
 PAYLOAD_API_URL=https://content.diaradio.live
@@ -1331,6 +1337,11 @@ PAYLOAD_API_KEY=your_api_key
 # Hetzner Storage Box (SSH)
 # Configure in ~/.ssh/config for 'bx-archive' host
 ```
+
+#### Authoritative `.env` source (production)
+- **Authoritative file**: `/srv/payload/.env`
+- **How it is loaded**: `docker-compose.yml` uses `env_file: - .env` for the `payload` and `jobs` services, so the container runtime env comes from that file (relative to `/srv/payload`).
+- **Avoid surprises**: backups like `.env.backup.*` and `test.env` are *not used* unless you explicitly pass `docker compose --env-file ...` or copy them into place.
 
 ### Logging
 
