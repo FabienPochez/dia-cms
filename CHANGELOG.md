@@ -15,10 +15,29 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [Unreleased]
 
+---
+
+## [2025-12-17] - Cron Reliability, Subprocess Guard Hardening, and Dependency Cleanup
+
+### Security
+- **Subprocess Guard Hardening** – Improved `child_process` monkey-patching safety and recursion resistance:
+  - Preserve original `child_process` functions and expose via `globalThis.__DIA_ORIG_CP`
+  - Harden patched `exec()` argument handling (`exec(cmd, cb)` / `exec(cmd, opts, cb)` / `exec(cmd, opts)`)
+  - Improve recursion guard handling for spawn/spawnSync logging
+- **Jobs-Only Archive Pull** – Allowed archive rehydration only from authorized `jobs` container (`CONTAINER_TYPE=jobs`) while keeping other containers blocked.
+
+### Changed
+- **Jobs Container** – Switched `jobs` to a purpose-built image (`Dockerfile.jobs`) including `bash`, `rsync`, and `openssh-client`.
+- **Rsync Pull SSH** – `scripts/sh/archive/rsync_pull.sh` now conditionally uses the container-mounted key at `/home/node/.ssh/id_ed25519` when present (host remains unaffected).
+- **Payload Version Pin** – Pin `payload` to **`3.48.0`**.
+
 ### Removed
 - **Unused Dependencies** – Removed unused packages from `package.json`:
   - `@types/glob` (deprecated stub, glob provides its own types)
   - `ts-node` (replaced by `tsx` in npm scripts)
+
+### Documentation
+- Added reviewer packs and investigation notes for subprocess guard changes and incident follow-up.
 
 ---
 

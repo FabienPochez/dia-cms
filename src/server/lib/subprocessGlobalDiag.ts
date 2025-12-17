@@ -8,13 +8,14 @@
  * Import this at the very top of entrypoints (before any other imports that might use child_process).
  */
 
-import {
-  exec as originalExec,
-  execFile as originalExecFile,
-  spawn as originalSpawn,
-  spawnSync as originalSpawnSync,
-  execSync as originalExecSync,
-} from 'child_process'
+// CRITICAL: Capture original functions BEFORE any patching
+// Import directly from node:child_process to ensure we get the true originals (ESM consistency)
+import * as childProcess from 'node:child_process'
+const originalExec = childProcess.exec
+const originalExecFile = childProcess.execFile
+const originalSpawn = childProcess.spawn
+const originalSpawnSync = childProcess.spawnSync
+const originalExecSync = childProcess.execSync
 import { promisify } from 'util'
 import { createRequire } from 'module'
 import { createHash } from 'crypto'
@@ -106,6 +107,22 @@ function shouldBlockCommand(
 
   // Extract base command (first word, before any shell metacharacters)
   const baseCmd = command.split(/[\s|&;<>`$(){}[\]"'\\]/)[0].toLowerCase().trim()
+  
+  // SECURITY EXCEPTION: Allow bash for authorized rsync operations
+  // Check if this is bash calling our authorized rsync_pull.sh script
+  if (baseCmd === 'bash' && command.includes('rsync_pull.sh')) {
+    // Verify it's the correct script path (authorized location)
+    const scriptPathMatch = command.match(/bash\s+['"]?([^'"]*rsync_pull\.sh)/)
+    if (scriptPathMatch && scriptPathMatch[1]) {
+      const scriptPath = scriptPathMatch[1]
+      // Only allow if script is in the authorized location
+      if (scriptPath.includes('/scripts/sh/archive/rsync_pull.sh') || 
+          scriptPath.includes('scripts/sh/archive/rsync_pull.sh')) {
+        // This is an authorized rsync operation - allow it
+        return { blocked: false }
+      }
+    }
+  }
   
   // Check deny list first (hard deny)
   if (DENY_LIST.has(baseCmd)) {
@@ -380,9 +397,12 @@ function logSecurityBlock(
  * Log subprocess execution with structured output
  */
 function logGlobalSubprocess(method: string, command: string, args?: string[], options?: any) {
-  // Prevent recursion - if we're already logging, skip
+  // Prevent recursion - if we're already logging, skip immediately
   // NOTE: isLogging is set by patchedSpawn/patchedSpawnSync BEFORE calling this function
-  if (isLogging) return
+  // CRITICAL: This check must happen FIRST, before any operations that might trigger spawn
+  if (isLogging) {
+    return
+  }
 
   // SECURITY: Check kill-switch BEFORE logging
   const blockCheck = shouldBlockCommand(method, command, args, options)
@@ -604,22 +624,44 @@ function logGlobalSubprocess(method: string, command: string, args?: string[], o
     process.stdout.write(logMsg)
   } catch (e) {
     // If logging fails, silently continue (prevents recursion)
-  } finally {
-    isLogging = false
+    // NOTE: Do NOT reset isLogging here - it's managed by the caller (patchedSpawn/patchedSpawnSync)
   }
 }
 
 // Patch exec
-const patchedExec = function (command: string, options?: ExecOptions, callback?: any) {
+// CRITICAL: Must handle all argument variants:
+// - exec(cmd, cb) - callback only
+// - exec(cmd, opts, cb) - options + callback
+// - exec(cmd, opts) - options only, returns ChildProcess
+const patchedExec = function (command: string, optionsOrCallback?: ExecOptions | ((error: any, stdout: string, stderr: string) => void), callback?: (error: any, stdout: string, stderr: string) => void) {
+  // Detect argument pattern
+  let options: ExecOptions | undefined
+  let actualCallback: ((error: any, stdout: string, stderr: string) => void) | undefined
+  
+  if (typeof optionsOrCallback === 'function') {
+    // exec(cmd, cb) - second argument is callback
+    actualCallback = optionsOrCallback
+    options = undefined
+  } else if (typeof callback === 'function') {
+    // exec(cmd, opts, cb) - third argument is callback
+    options = optionsOrCallback
+    actualCallback = callback
+  } else {
+    // exec(cmd, opts) - second argument is options, returns ChildProcess
+    options = optionsOrCallback
+    actualCallback = undefined
+  }
+  
   try {
     logGlobalSubprocess('exec', command, undefined, options)
-    return originalExec(command, options, callback)
+    // CRITICAL: Use apply() to preserve all argument variants and this context
+    return originalExec.apply(this, arguments)
   } catch (error: any) {
     if (error.code === 'SECURITY_BLOCK') {
       // Security block - don't execute
-      if (callback) {
-        callback(error, null, null)
-        return
+      if (actualCallback) {
+        actualCallback(error, '', '')
+        return {} as any // Return dummy ChildProcess to match signature
       }
       throw error
     }
@@ -630,8 +672,8 @@ const patchedExec = function (command: string, options?: ExecOptions, callback?:
 // Patch execSync
 const patchedExecSync = function (command: string, options?: ExecOptions) {
   try {
-    logGlobalSubprocess('execSync', command, undefined, options)
-    return originalExecSync(command, options)
+  logGlobalSubprocess('execSync', command, undefined, options)
+  return originalExecSync(command, options)
   } catch (error: any) {
     if (error.code === 'SECURITY_BLOCK') {
       // Security block - rethrow to prevent execution
@@ -652,13 +694,13 @@ const patchedExecFile = function (
     // SECURITY: Force shell:false for execFile (safer)
     const safeOptions = options ? { ...options, shell: false } : { shell: false }
     logGlobalSubprocess('execFile', file, args, safeOptions)
-    if (args && callback) {
+  if (args && callback) {
       return originalExecFile(file, args, safeOptions, callback)
-    } else if (args) {
+  } else if (args) {
       return originalExecFile(file, args, safeOptions as any)
-    } else if (callback) {
+  } else if (callback) {
       return originalExecFile(file, safeOptions as any, callback)
-    } else {
+  } else {
       return originalExecFile(file, safeOptions as any)
     }
   } catch (error: any) {
@@ -678,10 +720,11 @@ const patchedExecFile = function (
 const patchedSpawn = function (command: string, args?: string[], options?: SpawnOptions) {
   // Prevent recursion: if we're already logging, skip logging and call original directly
   if (isLogging) {
-    if (args) {
-      return originalSpawn(command, args, options)
-    } else {
-      return originalSpawn(command, options as any)
+    // CRITICAL: Use originalSpawn directly, bypassing all logging
+  if (args) {
+    return originalSpawn(command, args, options)
+  } else {
+    return originalSpawn(command, options as any)
     }
   }
   
@@ -696,8 +739,13 @@ const patchedSpawn = function (command: string, args?: string[], options?: Spawn
           shell: options.shell && SECURITY_ALLOWLIST.has(baseCmd) ? options.shell : false,
         }
       : { shell: false }
+    
+    // Call logGlobalSubprocess - it will check isLogging internally and return early if needed
+    // But we've already set isLogging = true, so any spawn calls from within logGlobalSubprocess
+    // will hit the guard at the top of this function and use originalSpawn directly
     logGlobalSubprocess('spawn', command, args, safeOptions)
-    // Call original AFTER logging
+    
+    // Call original AFTER logging - use originalSpawn directly (not patched)
     if (args) {
       return originalSpawn(command, args, safeOptions)
     } else {
@@ -710,6 +758,7 @@ const patchedSpawn = function (command: string, args?: string[], options?: Spawn
     }
     throw error
   } finally {
+    // Always reset flag, even on error
     isLogging = false
   }
 }
@@ -718,10 +767,11 @@ const patchedSpawn = function (command: string, args?: string[], options?: Spawn
 const patchedSpawnSync = function (command: string, args?: string[], options?: SpawnOptions) {
   // Prevent recursion: if we're already logging, skip logging and call original directly
   if (isLogging) {
-    if (args) {
-      return originalSpawnSync(command, args, options)
-    } else {
-      return originalSpawnSync(command, options as any)
+    // CRITICAL: Use originalSpawnSync directly, bypassing all logging
+  if (args) {
+    return originalSpawnSync(command, args, options)
+  } else {
+    return originalSpawnSync(command, options as any)
     }
   }
   
@@ -736,8 +786,13 @@ const patchedSpawnSync = function (command: string, args?: string[], options?: S
           shell: options.shell && SECURITY_ALLOWLIST.has(baseCmd) ? options.shell : false,
         }
       : { shell: false }
+    
+    // Call logGlobalSubprocess - it will check isLogging internally and return early if needed
+    // But we've already set isLogging = true, so any spawn calls from within logGlobalSubprocess
+    // will hit the guard at the top of this function and use originalSpawnSync directly
     logGlobalSubprocess('spawnSync', command, args, safeOptions)
-    // Call original AFTER logging
+    
+    // Call original AFTER logging - use originalSpawnSync directly (not patched)
     if (args) {
       return originalSpawnSync(command, args, safeOptions)
     } else {
@@ -750,8 +805,19 @@ const patchedSpawnSync = function (command: string, args?: string[], options?: S
     }
     throw error
   } finally {
+    // Always reset flag, even on error
     isLogging = false
   }
+}
+
+// CRITICAL: Store originals globally BEFORE patching so other modules can access true originals
+// This ensures subprocessDiag.ts and other modules can use unpatched exec/execFile
+;(globalThis as any).__DIA_ORIG_CP = {
+  exec: originalExec,
+  execFile: originalExecFile,
+  execSync: originalExecSync,
+  spawn: originalSpawn,
+  spawnSync: originalSpawnSync,
 }
 
 // Check if patching is disabled via environment variable
@@ -761,20 +827,23 @@ if (DISABLE_SUBPROC_PATCH) {
   console.log('[SUBPROC_DIAG] ⚠️  Subprocess diagnostic patch DISABLED via DISABLE_SUBPROC_DIAG=true')
 } else {
   // Monkey-patch the child_process module
-  // Handle ES modules - use createRequire for compatibility
+  // CRITICAL: ES modules are read-only, so we need to use Object.defineProperty
+  // or use createRequire for CommonJS compatibility
   const require = createRequire(import.meta.url)
   const cp = require('child_process')
 
-  // Patch all methods
-  cp.exec = patchedExec
-  cp.execSync = patchedExecSync
-  cp.execFile = patchedExecFile
-  cp.spawn = patchedSpawn
-  cp.spawnSync = patchedSpawnSync
+  // Patch all methods using Object.defineProperty to override read-only properties
+  Object.defineProperty(cp, 'exec', { value: patchedExec, writable: true, configurable: true })
+  Object.defineProperty(cp, 'execSync', { value: patchedExecSync, writable: true, configurable: true })
+  Object.defineProperty(cp, 'execFile', { value: patchedExecFile, writable: true, configurable: true })
+  Object.defineProperty(cp, 'spawn', { value: patchedSpawn, writable: true, configurable: true })
+  Object.defineProperty(cp, 'spawnSync', { value: patchedSpawnSync, writable: true, configurable: true })
 
   // Also patch the promisified versions
-  cp.execAsync = promisify(patchedExec)
-  cp.execFileAsync = promisify(patchedExecFile)
+  // CRITICAL: Use originalExecAsync (already promisified original) to avoid double-patching
+  // If we use promisify(patchedExec), it will go through the patch again causing recursion
+  Object.defineProperty(cp, 'execAsync', { value: originalExecAsync, writable: true, configurable: true })
+  Object.defineProperty(cp, 'execFileAsync', { value: originalExecFileAsync, writable: true, configurable: true })
 
   const killSwitchStatus = KILL_SWITCH_ENABLED ? 'ENABLED' : 'DISABLED'
   const allowlistStr = Array.from(SECURITY_ALLOWLIST).join(', ')

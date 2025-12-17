@@ -1,0 +1,16 @@
+# Dockerfile for jobs service (cron jobs)
+# Extends node:18-alpine with bash, rsync, and openssh-client for rsync operations
+
+FROM node:18-alpine
+
+# Install bash, rsync, and openssh-client (required for rsync_pull.sh)
+RUN apk add --no-cache bash rsync openssh-client
+
+# Set working directory
+WORKDIR /app
+
+# Run as node user (uid 1000)
+USER node
+
+
+

@@ -30,8 +30,15 @@ cleanup_tmp() {
 trap cleanup_tmp EXIT
 
 # SSH defaults (disable ControlMaster and override ControlPath to writable location)
-# This allows the SSH config to be used while avoiding readonly filesystem issues
-RSYNC_RSH='ssh -o ControlMaster=no -o ControlPath=/tmp/ssh-cm-%r@%h:%p'
+# IMPORTANT: This script can run on the host OR inside the `jobs` container.
+# - On host: use normal SSH identity/config (do NOT force a container-only IdentityFile path)
+# - In jobs container: prefer the mounted key at /home/node/.ssh/id_ed25519
+RSYNC_IDENTITY_OPT=""
+if [[ -f "/home/node/.ssh/id_ed25519" ]]; then
+  RSYNC_IDENTITY_OPT="-o IdentityFile=/home/node/.ssh/id_ed25519"
+fi
+
+RSYNC_RSH="ssh -o ControlMaster=no -o ControlPath=/tmp/ssh-cm-%r@%h:%p ${RSYNC_IDENTITY_OPT}"
 export RSYNC_RSH
 
 # Execute rsync into temp file and atomically move into place

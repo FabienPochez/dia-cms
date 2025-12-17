@@ -48,7 +48,7 @@
     "next": "15.3.6",
     "node-fetch": "^3.3.2",
     "node-id3": "^0.2.9",
-    "payload": "^3.45.0",
+    "payload": "3.48.0",
     "react": "19.1.2",
     "react-dom": "19.1.2",
     "sharp": "0.32.6",

@@ -107,19 +107,35 @@ services:
       - default
 
   jobs:
-    image: node:18-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.jobs
     restart: "no"  # Ephemeral - never auto-restart
     working_dir: /app
-    user: "1000:1000"  # Non-root user
+    user: "1000:1000"  # Non-root user (node user)
     volumes:
       - .:/app:ro  # Read-only repository mount
       - /srv/media:/srv/media:rw  # Read-write media access
+      # SECURITY: Mount only the specific SSH key needed for rsync (not entire .ssh directory)
+      # Mount to /home/node/.ssh/ (node user's home in node:18-alpine, uid 1000)
+      - /home/fab/.ssh/id_ed25519:/home/node/.ssh/id_ed25519:ro  # SSH private key (read-only)
+      - /home/fab/.ssh/id_ed25519.pub:/home/node/.ssh/id_ed25519.pub:ro  # SSH public key (read-only)
+      - /home/fab/.ssh/config:/home/node/.ssh/config:ro  # SSH config (read-only)
     command:
       - sh
       - -c
-      - "echo jobs image ready"  # No-op; cron overrides via `run --rm`
+      - |
+        # Ensure .ssh directory exists with correct permissions
+        mkdir -p /home/node/.ssh && chmod 700 /home/node/.ssh && chmod 600 /home/node/.ssh/id_ed25519 2>/dev/null || true
+        # Add archive host to known_hosts to suppress warning (if not already present)
+        ssh-keyscan -p 23 u476522.your-storagebox.de 2>/dev/null >> /home/node/.ssh/known_hosts 2>/dev/null || true
+        chmod 644 /home/node/.ssh/known_hosts 2>/dev/null || true
+        echo "jobs image ready"
     env_file:
       - .env
+    environment:
+      # SECURITY: Identifier for authorized jobs container (allows rsyncPull execution)
+      - CONTAINER_TYPE=jobs
     networks:
       - default
 

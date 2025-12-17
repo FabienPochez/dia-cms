@@ -4,6 +4,7 @@
  */
 
 import fs from 'fs/promises'
+import fsSync from 'fs'
 import path from 'path'
 import { isValidRelativePath, escapeShellArg } from '../../lib/utils/pathSanitizer'
 import { diagExec } from './subprocessDiag'
@@ -68,12 +69,13 @@ export async function rsyncPull(
     // File doesn't exist, proceed with copy
   }
 
-  // SECURITY: rsyncPull must run on HOST, not in container
-  // The container doesn't have SSH access to bx-archive and doesn't have bash
-  // This function should NOT be called from inside the Payload container
+  // SECURITY: rsyncPull must run on HOST or in authorized jobs container
+  // The Payload container doesn't have SSH access to bx-archive and doesn't have bash
+  // The jobs container is authorized and will have SSH keys mounted
 
-  // Check for Docker container indicators using robust detection
+  // Check for Docker container indicators using ESM-compatible detection
   let isInsideContainer = false
+  let isAuthorizedContainer = false
   let detectionContext: Record<string, any> = {
     HOSTNAME: process.env.HOSTNAME,
     CONTAINER: process.env.CONTAINER,
@@ -81,12 +83,12 @@ export async function rsyncPull(
   }
 
   try {
-    const fs = require('fs')
-    const hasDockerenv = fs.existsSync('/.dockerenv')
+    // Use ESM-compatible fs (already imported at top of file)
+    const hasDockerenv = fsSync.existsSync('/.dockerenv')
     let hasDockerCgroup = false
 
-    if (fs.existsSync('/proc/1/cgroup')) {
-      const cgroupContent = fs.readFileSync('/proc/1/cgroup', 'utf8')
+    if (fsSync.existsSync('/proc/1/cgroup')) {
+      const cgroupContent = fsSync.readFileSync('/proc/1/cgroup', 'utf8')
       hasDockerCgroup = cgroupContent.includes('docker')
     }
 
@@ -94,9 +96,16 @@ export async function rsyncPull(
     detectionContext.hasDockerCgroup = hasDockerCgroup
 
     isInsideContainer = hasDockerenv || hasDockerCgroup
+    
+    // SECURITY: Only allow jobs container (ephemeral, authorized for cron)
+    // Jobs container is identified by CONTAINER_TYPE=jobs environment variable
+    isAuthorizedContainer = process.env.CONTAINER_TYPE === 'jobs'
+    
   } catch (error) {
     // Fallback to env var checks if file system checks fail
     isInsideContainer = !!process.env.CONTAINER || process.env.HOSTNAME?.includes('payload')
+    // SECURITY: Only allow jobs container (identified by CONTAINER_TYPE env var)
+    isAuthorizedContainer = process.env.CONTAINER_TYPE === 'jobs'
     detectionContext.fallbackUsed = true
     detectionContext.fallbackError = (error as Error).message
   }
@@ -104,17 +113,20 @@ export async function rsyncPull(
   // Log detection context for debugging
   console.log(`[RSYNCPULL] Detection context:`, JSON.stringify(detectionContext))
 
-  if (isInsideContainer) {
-    // SECURITY: Block execution from inside container
-    // rsyncPull must be called from host-side scripts only
+  if (isInsideContainer && !isAuthorizedContainer) {
+    // SECURITY: Block execution from unauthorized containers (e.g., Payload container)
+    // Only allow jobs container (ephemeral, authorized for cron jobs)
     console.log(
-      `[RSYNCPULL] EXECUTION_BLOCKED: Running inside container (HOSTNAME=${process.env.HOSTNAME || 'unknown'})`,
+      `[RSYNCPULL] EXECUTION_BLOCKED: Running inside unauthorized container (HOSTNAME=${process.env.HOSTNAME || 'unknown'})`,
     )
     throw new RsyncPullError(
       'E_EXECUTION_BLOCKED',
-      'rsyncPull cannot be executed from inside container. This function must be called from host-side scripts only (e.g., cron jobs running on host).',
+      'rsyncPull cannot be executed from inside unauthorized container. Only jobs container (ephemeral cron) is allowed.',
     )
   }
+  
+  // If in authorized jobs container, proceed (SSH keys will be mounted)
+  // If on host, proceed normally
 
   // Execute on host only
   const scriptPath = `${process.cwd()}/scripts/sh/archive/rsync_pull.sh`
@@ -141,6 +153,14 @@ export async function rsyncPull(
       }
     } catch (error: any) {
       lastError = error
+
+      // Log the actual error for debugging
+      console.error(`[RSYNCPULL] Error on attempt ${attempt + 1}:`, {
+        message: error.message,
+        code: error.code,
+        stdout: error.stdout?.substring(0, 200),
+        stderr: error.stderr?.substring(0, 200),
+      })
 
       // Check if error indicates source file not found
       const errorMsg = error.message || ''
