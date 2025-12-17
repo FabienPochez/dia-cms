@@ -17,6 +17,18 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-17] - LibreTime Stream Recovery (Playout Control + Internal Media Serving)
+
+### Fixed
+- **Playout → Liquidsoap Control (Docker)** – Restored LibreTime playout scheduling by making Liquidsoap telnet reachable cross-container (internal only; no host port exposure).
+- **LibreTime file downloads via nginx** – Restored `GET /api/v2/files/:id/download` by aligning nginx internal media serving (`/api/_media`) with the active storage path and ensuring `/srv/media` is mounted into the LibreTime services that read/serve media.
+
+### Changed
+- **LibreTime storage + nginx alignment (dia-prod-03)** – Standardized LibreTime storage to `/srv/media` and updated nginx `/api/_media` alias to match (required for `X-Accel-Redirect` based media downloads).
+- **LibreTime service mounts (dia-prod-03)** – Mirrored `/srv/media:/srv/media` mounts into LibreTime `nginx`, `api`, `legacy`, `liquidsoap`, and `playout` while keeping the existing `/srv/libretime` volume intact.
+
+---
+
 ## [2025-12-17] - Cron Reliability, Subprocess Guard Hardening, and Dependency Cleanup
 
 ### Security
