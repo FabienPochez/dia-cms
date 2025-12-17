@@ -21,6 +21,8 @@ function normalizeToUTC(time: string): string {
 }
 
 export async function DELETE(request: NextRequest) {
+  // Keep identifiers outside try/catch for safe logging (avoid ReferenceError)
+  let episodeIdForLog: string | undefined
   try {
     // Security: Require admin or staff authentication
     const auth = await checkScheduleAuth(request)
@@ -48,6 +50,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const { episodeId, scheduledAt } = body
+    episodeIdForLog = episodeId
 
     if (!episodeId || !scheduledAt) {
       return NextResponse.json(
@@ -85,34 +88,70 @@ export async function DELETE(request: NextRequest) {
 
     // Delete playout from LibreTime
     const deleted = await ltClient.deletePlayout(episode.libretimePlayoutId)
+    const libretimeDeleted = Boolean(deleted) || deleted === false // false covers 404 "already gone"
     if (!deleted) {
       // deletePlayout() already handles 404 → false, so treat false as "already gone"
       console.log(`[SCHEDULE] schedule_unplan_ok episodeId=${episodeId} (playout already missing)`)
-      // Continue to clear local data
     }
 
     // Update episode to clear schedule data
-    await payload.update({
-      collection: 'episodes',
-      id: episodeId,
-      data: {
-        scheduledAt: null,
-        scheduledEnd: null,
-        airStatus: 'published',
-        libretimePlayoutId: null,
-        libretimeInstanceId: null,
-      },
-    })
+    try {
+      await payload.update({
+        collection: 'episodes',
+        id: episodeId,
+        data: {
+          scheduledAt: null,
+          scheduledEnd: null,
+          // IMPORTANT: airStatus is required and does NOT allow 'published' (see Episodes collection options)
+          airStatus: 'queued',
+          libretimePlayoutId: null,
+          libretimeInstanceId: null,
+        },
+      })
+    } catch (updateError: any) {
+      // LibreTime deletion succeeded (or was already gone), but local state update failed.
+      // Do NOT return 500; return 200 with a warning payload so UI can proceed and we can repair locally.
+      console.error('[SCHEDULE] schedule_unplan_warn payload_update_failed', updateError)
+      return NextResponse.json(
+        {
+          success: true,
+          warning: {
+            code: 'PAYLOAD_UPDATE_FAILED',
+            message: 'LibreTime playout was deleted, but local episode update failed',
+            details: updateError instanceof Error ? updateError.message : String(updateError),
+          },
+          libretime: {
+            deleted: libretimeDeleted,
+            playoutId: episode.libretimePlayoutId,
+          },
+          payload: {
+            updated: false,
+            episodeId,
+          },
+        },
+        { status: 200 },
+      )
+    }
 
     console.log(
       `[SCHEDULE] schedule_unplan_ok episodeId=${episodeId} playoutId=${episode.libretimePlayoutId}`,
     )
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({
+      success: true,
+      libretime: {
+        deleted: libretimeDeleted,
+        playoutId: episode.libretimePlayoutId,
+      },
+      payload: {
+        updated: true,
+        episodeId,
+      },
+    })
   } catch (error) {
     console.error('[SCHEDULE] UnplanOne error:', error)
     console.log(
-      `[SCHEDULE] schedule_unplan_fail episodeId=${episodeId || 'unknown'} error=${error instanceof Error ? error.message : 'Unknown error'}`,
+      `[SCHEDULE] schedule_unplan_fail episodeId=${episodeIdForLog || 'unknown'} error=${error instanceof Error ? error.message : 'Unknown error'}`,
     )
     return NextResponse.json(
       {

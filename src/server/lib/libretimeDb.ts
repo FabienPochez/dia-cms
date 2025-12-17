@@ -1,11 +1,24 @@
 import { diagExecFile } from './subprocessDiag'
 import { isValidPath } from '../../lib/utils/pathSanitizer'
+import fsSync from 'fs'
 
 // LibreTime database configuration
 const LIBRETIME_DB_HOST = process.env.LIBRETIME_DB_HOST || 'libretime-postgres-1'
 const LIBRETIME_DB_NAME = process.env.LIBRETIME_DB_NAME || 'libretime'
 const LIBRETIME_DB_USER = process.env.LIBRETIME_DB_USER || 'libretime'
 const LIBRETIME_DB_PASSWORD = process.env.LIBRETIME_DB_PASSWORD || 'libretime'
+
+function isRunningInContainer(): boolean {
+  // Prefer explicit signal for our authorized jobs container
+  if (process.env.CONTAINER_TYPE === 'jobs') return true
+  if (process.env.CONTAINER === 'true') return true
+  // Fallback: Docker runtime marker
+  try {
+    return fsSync.existsSync('/.dockerenv')
+  } catch {
+    return false
+  }
+}
 
 /**
  * Update file_exists status in LibreTime database
@@ -30,8 +43,7 @@ export async function updateLibreTimeFileExists(
     const escapedPath = filepath.replace(/'/g, "''")
     const sqlQuery = `UPDATE cc_files SET file_exists = ${existsValue} WHERE filepath = '${escapedPath}';`
 
-    const isInsideContainer =
-      process.env.HOSTNAME?.includes('payload') || process.env.CONTAINER === 'true'
+    const isInsideContainer = isRunningInContainer()
 
     console.log(`🔄 Updating LibreTime DB: file_exists=${existsValue} for ${filepath}`)
 
@@ -150,8 +162,7 @@ export async function updateLibreTimeFileExistsBatch(
 
     const sqlCommand = `UPDATE cc_files SET file_exists = CASE filepath ${updateClauses} ELSE file_exists END WHERE filepath IN (${filepaths});`
 
-    const isInsideContainer =
-      process.env.HOSTNAME?.includes('payload') || process.env.CONTAINER === 'true'
+    const isInsideContainer = isRunningInContainer()
 
     console.log(`🔄 Batch updating LibreTime DB: ${updates.length} files`)
 

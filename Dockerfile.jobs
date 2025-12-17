@@ -4,7 +4,8 @@
 FROM node:18-alpine
 
 # Install bash, rsync, and openssh-client (required for rsync_pull.sh)
-RUN apk add --no-cache bash rsync openssh-client
+# Add postgresql-client so jobs can update LibreTime DB over TCP (no docker CLI/socket)
+RUN apk add --no-cache bash rsync openssh-client postgresql-client
 
 # Set working directory
 WORKDIR /app

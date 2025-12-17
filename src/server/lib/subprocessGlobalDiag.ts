@@ -684,30 +684,65 @@ const patchedExecSync = function (command: string, options?: ExecOptions) {
 }
 
 // Patch execFile
+// IMPORTANT: child_process.execFile has multiple overloads:
+//   execFile(file[, args][, options][, callback])
+// We must normalize arguments safely; otherwise callers using (file, options, cb)
+// will throw ERR_INVALID_ARG_TYPE ("callback must be function") and can break exec().
 const patchedExecFile = function (
   file: string,
-  args?: string[],
-  options?: ExecFileOptions,
+  argsOrOptionsOrCallback?: any,
+  optionsOrCallback?: any,
   callback?: any,
 ) {
-  try {
-    // SECURITY: Force shell:false for execFile (safer)
-    const safeOptions = options ? { ...options, shell: false } : { shell: false }
-    logGlobalSubprocess('execFile', file, args, safeOptions)
-  if (args && callback) {
-      return originalExecFile(file, args, safeOptions, callback)
-  } else if (args) {
-      return originalExecFile(file, args, safeOptions as any)
-  } else if (callback) {
-      return originalExecFile(file, safeOptions as any, callback)
-  } else {
-      return originalExecFile(file, safeOptions as any)
+  let args: string[] | undefined
+  let options: ExecFileOptions | undefined
+  let actualCallback: any | undefined
+
+  // Normalize args/options/callback
+  if (Array.isArray(argsOrOptionsOrCallback)) {
+    args = argsOrOptionsOrCallback
+    if (typeof optionsOrCallback === 'function') {
+      options = undefined
+      actualCallback = optionsOrCallback
+    } else {
+      options = optionsOrCallback
+      actualCallback = callback
     }
+  } else if (typeof argsOrOptionsOrCallback === 'function') {
+    args = undefined
+    options = undefined
+    actualCallback = argsOrOptionsOrCallback
+  } else {
+    // (file, options?, callback?)
+    args = undefined
+    options = argsOrOptionsOrCallback
+    actualCallback = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback
+  }
+
+  try {
+    // IMPORTANT:
+    // Do NOT force shell:false here.
+    // Node's exec() implementation may rely on execFile(..., { shell: true }) under the hood.
+    // Shell usage is still governed by shouldBlockCommand() (deny list + allowlist + exceptions).
+    const safeOptions = options ? { ...options } : undefined
+    logGlobalSubprocess('execFile', file, args, safeOptions)
+
+    // Preserve overload behavior while injecting safeOptions
+    if (args && actualCallback) {
+      return originalExecFile(file, args, safeOptions, actualCallback)
+    }
+    if (args) {
+      return originalExecFile(file, args, safeOptions as any)
+    }
+    if (actualCallback) {
+      return originalExecFile(file, safeOptions as any, actualCallback)
+    }
+    return originalExecFile(file, safeOptions as any)
   } catch (error: any) {
     if (error.code === 'SECURITY_BLOCK') {
       // Security block - don't execute
-      if (callback) {
-        callback(error, null, null)
+      if (actualCallback) {
+        actualCallback(error, null, null)
         return
       }
       throw error

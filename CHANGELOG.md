@@ -61,6 +61,24 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-17] - Cron Runtime Fixes (psql-over-TCP, unplanOne semantics, ffprobe availability)
+
+### Fixed
+- **Cron A LibreTime DB updates (no docker CLI)** – Fixed `spawn docker ENOENT` in the `jobs` container by using `psql` over TCP to `libretime-postgres-1` (no `docker exec`, no `/var/run/docker.sock` mount).
+- **Cron A rsync crash** – Fixed `ERR_INVALID_ARG_TYPE` callback crash caused by `execFile` argument normalization in `subprocessGlobalDiag.ts`.
+- **unplanOne 500 despite successful LibreTime deletion** – Prevented `episodeId is not defined` ReferenceError and returned **200** with a warning payload if local updates fail after a successful LibreTime delete (no more misleading 500).
+
+### Changed
+- **Jobs image** – Added `postgresql-client` to `Dockerfile.jobs` so cron jobs can run `psql` inside the `jobs` container.
+- **LibreTime DB reachability** – Attached LibreTime `postgres` service to `dia_internal` to allow TCP access from `jobs` (still no Postgres host port exposure).
+- **Payload runtime** – Added `Dockerfile.payload-runtime` and switched the `payload` service to a minimal runtime image that includes `ffprobe` (fixes `ffprobe ENOENT` during `apply-range` / deterministic feed generation).
+- **DB env wiring** – Added `LIBRETIME_DB_*` variables to `/srv/payload/.env` to match LibreTime Postgres credentials (kept out of git; secrets not logged).
+
+### Observability
+- Added a compact stack preview for unexpected Node API misuse errors during rsync retries (only when `ERR_INVALID_ARG_TYPE` is detected).
+
+---
+
 ## [2025-12-16] - Security: Kill-Switch Implementation, Secrets Rotation, Version Updates
 
 ### Security

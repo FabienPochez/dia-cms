@@ -155,11 +155,21 @@ export async function rsyncPull(
       lastError = error
 
       // Log the actual error for debugging
+      const stackPreview =
+        typeof error?.stack === 'string'
+          ? error.stack
+              .split('\n')
+              .slice(0, 10)
+              .map((line: string) => line.trim())
+              .join(' | ')
+          : undefined
       console.error(`[RSYNCPULL] Error on attempt ${attempt + 1}:`, {
         message: error.message,
         code: error.code,
         stdout: error.stdout?.substring(0, 200),
         stderr: error.stderr?.substring(0, 200),
+        // Only include stack when we hit unexpected Node API misuse / signature issues
+        stack: error.code === 'ERR_INVALID_ARG_TYPE' ? stackPreview : undefined,
       })
 
       // Check if error indicates source file not found
