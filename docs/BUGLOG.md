@@ -1,5 +1,70 @@
 ## Bug Log
 
+### 2025-12-18 – Stream delay: 33-minute lag due to LibreTime hourly boundary bug
+- **When:** 2025-12-18 ~13:00-14:33 UTC
+- **Impact:** Stream delayed by 33 minutes, wrong show playing at scheduled time
+- **Symptoms:**
+  - "Le Son de la Méduse #04" scheduled 13:00-14:00 UTC did not start at 13:00
+  - "Haircut 2000 #4 - Marcello" scheduled 14:00-15:00 UTC did not start at 14:00
+  - Stream was playing "Le Son de la Méduse" when "Haircut 2000" should have been playing
+  - Haircut 2000 finally started at ~14:33 UTC (33 minutes late)
+- **Evidence:**
+  - LibreTime playout logs show classic hourly boundary bug pattern:
+    - `13:00:00 - "waiting 3599.995769s until next scheduled item"` (waiting for 14:00 instead of playing 13:00-14:00 show)
+    - `14:00:00 - "waiting 3599.9958s until next scheduled item"` (waiting for 15:00 instead of playing 14:00-15:00 show)
+  - Stream delay calculated: 33 minutes (1994 seconds)
+  - Current time: 14:33 UTC, scheduled start: 14:00 UTC
+- **Root cause (confirmed):**
+  - LibreTime playout hourly boundary bug (documented in `STREAM_HEALTH_MONITORING.md`)
+  - Playout fails to recognize that "now" falls within a scheduled show window at hourly boundaries
+  - Calculates "next show" incorrectly and waits for the wrong time
+  - Typically causes 2-3 minute delays, but this instance caused 33-minute delay (longer than usual)
+  - Stream eventually self-recovers but with significant delay
+- **Workaround applied:**
+  - Restarted playout and liquidsoap services at 14:34 UTC to force immediate catch-up
+  - Stream resumed correct schedule after restart
+  - **Note:** This is a temporary workaround, not a fix. The underlying LibreTime bug remains.
+- **Recurrence (15:00 UTC / 16:00 Paris):**
+  - Bug recurred immediately at next hourly boundary (15:00 UTC)
+  - "Lobster radio w/ Gencives #06" scheduled 15:00-16:00 UTC did not start at 15:00
+  - Playout logs: `15:00:00 - "waiting 3599.996702s until next scheduled item"` (waiting for 16:00 instead of playing 15:00-16:00 show)
+  - Deterministic feed was correct (showed Lobster radio as first item), but LibreTime playout still failed to recognize current show
+  - Restarted again at 15:02 UTC to catch up
+  - **This confirms restarting is not a fix - bug persists and recurs at every hourly boundary**
+- **Prevention:**
+  - Stream health check script (`scripts/stream-health-check.sh`) should detect this but may not be running or may have missed it
+  - Health check typically detects delays >60 seconds and triggers restarts
+  - This incident suggests health check may need tuning or was not active
+  - The 33-minute delay is much longer than typical 2-3 minute delays, suggesting playout got stuck longer than usual
+- **Fix (needed):**
+  - **CRITICAL FINDING:** A queue.py patch was documented in CHANGELOG (Nov 6, 2025) but **never actually applied or was removed**
+  - Documentation says patch exists at `/srv/libretime/patches/queue.py` with docker-compose mount `./patches/queue.py:/src/libretime_playout/player/queue.py:ro`
+  - **Reality:** Patch file does NOT exist, docker-compose.yml does NOT have the mount
+  - Patch was supposed to filter stale/past events before rebuilding schedule_deque to prevent "waiting 3599s" bug
+  - **Action needed:** Recreate and apply the queue.py patch as documented in `LIBRETIME_HOUR_BOUNDARY_BUG_FORENSICS.md`
+  - Improve stream health check detection and response time
+  - Consider automatic restart triggers when delays exceed threshold
+- **Status:** Open – 2025-12-18 (workaround applied, bug recurs at every hourly boundary, documented fix was never applied)
+- **Testing (2025-12-18 15:16 UTC):**
+  - Restored patches from `/srv/backups/LT/patches/`
+  - Mounted `fetch.py` and `ls_script.liq` patches
+  - **Initially NOT mounting `queue.py`** - testing if it's actually needed
+  - Old server had queue.py file but it wasn't mounted and worked fine
+  - **Result at 16:00 UTC:** Bug recurred - playout waiting for 17:00 instead of playing 16:00 show
+  - **Logs:** `16:00:00 - "waiting 3599.996044s until next scheduled item"` (classic bug pattern)
+  - **Conclusion:** queue.py patch IS needed - fetch.py alone doesn't fix hourly boundary bug
+  - **Fix applied (16:13 UTC):** Added queue.py mount to docker-compose.yml and recreated playout container
+  - **Patch verified:** queue.py now 147 lines (patched) vs 79 lines (original), contains `filtered_events` logic
+  - **Result at 17:00 UTC:** Show started 11 minutes late (17:11 instead of 17:00)
+  - **Analysis:** Container restart at 16:13 UTC cleared the queue, requiring schedule rebuild
+  - **Insight:** The 11-minute delay was likely due to queue rebuilding after restart, not patch failure
+  - **Status:** Patch active (147 lines, contains filtered_events logic), monitoring next transition
+  - **Next monitoring:** Check 18:00 UTC transition - this will be the first transition with patch active and queue already built
+- **Location:**
+  - LibreTime playout service (`libretime-playout-1`)
+  - Known bug documented in `docs/STREAM_HEALTH_MONITORING.md`
+  - Stream health check: `scripts/stream-health-check.sh`
+
 ### 2025-11-25 – Upload form errors: 408 timeout, HEIC processing, duplicate filenames
 - **When:** 2025-11-24 (reported), 2025-11-25 (fixed)
 - **Fixed:** 2025-11-25
