@@ -17,6 +17,30 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-19] - Inbox Hydration Script Implementation
+
+### Added
+- **Inbox hydration script** – New script `scripts/hydrate-inbox-lt.ts` automates the import of host-uploaded audio files from `/srv/media/new` into LibreTime and hydrates corresponding Payload episodes:
+  - Scans `/srv/media/new` for `*.mp3` files with `{episodeId}__...` filename pattern
+  - Fetches eligible episodes from Payload (pendingReview=false, airStatus=draft, missing LibreTime fields)
+  - Uploads files to LibreTime via HTTP API using internal network URL (`http://libretime-nginx-1:8080`)
+  - Sets LibreTime track name (`track_title`) to episode title after upload (matches archive hydration workflow)
+  - Polls LibreTime until file analysis completes and filepath is available
+  - Updates Payload episodes with `libretimeTrackId`, `libretimeFilepathRelative`, and `airStatus='queued'`
+  - Includes CLI flags: `--inbox`, `--batch-size`, `--poll-seconds`, `--timeout-seconds`, `--dry-run`
+  - Implements lockfile to prevent concurrent runs
+  - Handles partial failures gracefully with summary reporting
+  - Idempotent and safe to run repeatedly
+
+### Fixed
+- **LibreTime analyzer volume mount** – Added `/srv/media:/srv/media:rw` volume mount to `libretime-analyzer-1` container in LibreTime `docker-compose.yml` to allow the analyzer to access uploaded files from `/srv/media/organize/`.
+- **LibreTime nginx → PHP-FPM connection** – Fixed stale DNS cache in `libretime-nginx-1` causing 502 errors when connecting to `libretime-legacy-1` (PHP-FPM) by reloading nginx configuration.
+
+### Changed
+- **Internal LibreTime URL resolution** – Inbox hydration script forces internal LibreTime base URL (`http://libretime-nginx-1:8080`) with no public URL fallback to bypass Cloudflare and ensure reliable uploads from within Docker containers.
+
+---
+
 ## [2025-12-17] - LibreTime Stream Recovery (Playout Control + Internal Media Serving)
 
 ### Fixed
