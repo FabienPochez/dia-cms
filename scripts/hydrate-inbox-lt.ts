@@ -51,7 +51,8 @@ function resolvePayloadApiUrl(): string {
 
 const PAYLOAD_API_URL = resolvePayloadApiUrl()
 const PAYLOAD_ADMIN_TOKEN = process.env.PAYLOAD_ADMIN_TOKEN
-const PAYLOAD_API_KEY = process.env.PAYLOAD_API_KEY
+const PAYLOAD_INBOX_API_KEY = process.env.PAYLOAD_INBOX_API_KEY // Primary key for inbox hydration
+const PAYLOAD_API_KEY = process.env.PAYLOAD_API_KEY // Fallback to existing key
 const PAYLOAD_AUTH_SLUG = process.env.PAYLOAD_AUTH_SLUG || 'users'
 
 interface HydrateOptions {
@@ -92,13 +93,8 @@ interface LibretimeData {
  * Build Payload authentication headers with API Key preference and JWT fallback
  */
 function buildPayloadAuthHeaders(): { Authorization: string; 'Content-Type': 'application/json' } {
-  if (PAYLOAD_API_KEY) {
-    return {
-      Authorization: `${PAYLOAD_AUTH_SLUG} API-Key ${PAYLOAD_API_KEY}`,
-      'Content-Type': 'application/json',
-    }
-  }
-
+  // Prefer PAYLOAD_ADMIN_TOKEN (JWT Bearer) over API key for update operations
+  // API keys require the user to have admin/staff role, while admin tokens are guaranteed to work
   if (PAYLOAD_ADMIN_TOKEN) {
     return {
       Authorization: `Bearer ${PAYLOAD_ADMIN_TOKEN}`,
@@ -106,7 +102,25 @@ function buildPayloadAuthHeaders(): { Authorization: string; 'Content-Type': 'ap
     }
   }
 
-  throw new Error('PAYLOAD_API_KEY or PAYLOAD_ADMIN_TOKEN environment variable is required')
+  // Prefer PAYLOAD_INBOX_API_KEY (dedicated key for inbox hydration)
+  if (PAYLOAD_INBOX_API_KEY) {
+    return {
+      Authorization: `${PAYLOAD_AUTH_SLUG} API-Key ${PAYLOAD_INBOX_API_KEY}`,
+      'Content-Type': 'application/json',
+    }
+  }
+
+  // Fallback to PAYLOAD_API_KEY (existing key for other scripts)
+  if (PAYLOAD_API_KEY) {
+    console.log('⚠️  Using PAYLOAD_API_KEY for authentication. Consider using PAYLOAD_INBOX_API_KEY for inbox hydration.')
+    console.log('⚠️  Ensure the API key user has admin or staff role for update operations.')
+    return {
+      Authorization: `${PAYLOAD_AUTH_SLUG} API-Key ${PAYLOAD_API_KEY}`,
+      'Content-Type': 'application/json',
+    }
+  }
+
+  throw new Error('PAYLOAD_INBOX_API_KEY, PAYLOAD_API_KEY, or PAYLOAD_ADMIN_TOKEN environment variable is required')
 }
 
 /**
@@ -830,7 +844,8 @@ async function hydrateInbox(): Promise<void> {
     console.log(`🔍 Docker detection: ${isInsideDocker() ? 'inside Docker' : 'host'}`)
     console.log(`🔍 LIBRETIME_API_URL env: ${process.env.LIBRETIME_API_URL || 'not set'}`)
     console.log(`🔍 PAYLOAD_API_URL: ${PAYLOAD_API_URL}`)
-    console.log(`🔍 PAYLOAD_API_KEY: ${PAYLOAD_API_KEY ? 'set' : 'not set'}`)
+    console.log(`🔍 PAYLOAD_INBOX_API_KEY: ${PAYLOAD_INBOX_API_KEY ? 'set' : 'not set'}`)
+    console.log(`🔍 PAYLOAD_API_KEY: ${PAYLOAD_API_KEY ? 'set (fallback)' : 'not set'}`)
     console.log(`🔍 PAYLOAD_ADMIN_TOKEN: ${PAYLOAD_ADMIN_TOKEN ? 'set' : 'not set'}`)
 
     const endpointType = await detectFilesEndpoint(baseUrl)

@@ -42,7 +42,7 @@ const Episodes: CollectionConfig = {
     update: ({ req }) => {
       const user = req.user as any
       if (!user) return false
-      // Admin/staff can update all episodes
+      // Admin/staff can update all episodes (includes API key users with staff role)
       if (user.role === 'admin' || user.role === 'staff') return true
       // Hosts can update episodes where they're linked (simpler approach without OR query)
       if (user.role === 'host' && user.host) {

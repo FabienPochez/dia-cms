@@ -31,13 +31,17 @@ This changelog documents all significant changes to the Payload CMS backend serv
   - Implements lockfile to prevent concurrent runs
   - Handles partial failures gracefully with summary reporting
   - Idempotent and safe to run repeatedly
+  - Skips re-uploading tracks that already exist in LibreTime, goes directly to Payload hydration
+- **Dedicated inbox API key support** – Added `PAYLOAD_INBOX_API_KEY` environment variable for inbox hydration script, with fallback to `PAYLOAD_API_KEY` for backward compatibility. Script prefers `PAYLOAD_INBOX_API_KEY` over `PAYLOAD_API_KEY` to allow separate API key management for automation scripts.
 
 ### Fixed
 - **LibreTime analyzer volume mount** – Added `/srv/media:/srv/media:rw` volume mount to `libretime-analyzer-1` container in LibreTime `docker-compose.yml` to allow the analyzer to access uploaded files from `/srv/media/organize/`.
 - **LibreTime nginx → PHP-FPM connection** – Fixed stale DNS cache in `libretime-nginx-1` causing 502 errors when connecting to `libretime-legacy-1` (PHP-FPM) by reloading nginx configuration.
+- **Payload API key authentication** – Inbox hydration script now uses dedicated `PAYLOAD_INBOX_API_KEY` tied to a `staff` role user, resolving 403 Forbidden errors when updating Payload episodes.
 
 ### Changed
 - **Internal LibreTime URL resolution** – Inbox hydration script forces internal LibreTime base URL (`http://libretime-nginx-1:8080`) with no public URL fallback to bypass Cloudflare and ensure reliable uploads from within Docker containers.
+- **Authentication priority** – Inbox hydration script authentication order: `PAYLOAD_ADMIN_TOKEN` (JWT) > `PAYLOAD_INBOX_API_KEY` > `PAYLOAD_API_KEY` (fallback).
 
 ---
 
