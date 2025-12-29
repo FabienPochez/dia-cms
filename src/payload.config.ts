@@ -129,8 +129,14 @@ export default buildConfig({
     // optional: staticURL: '/media', to expose files via HTTP
   },
 
-  // CORS with exact origins (Authorization header supported by default)
-  cors: allowedOrigins,
+  // CORS with explicit configuration for Authorization header support
+  // Required when frontend sends Authorization header (Bearer tokens)
+  cors: {
+    origins: allowedOrigins,
+    credentials: true,
+    headers: ['Authorization', 'Content-Type'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  },
 
   // CSRF: relaxed in dev, strict in prod
   csrf: process.env.NODE_ENV === 'production' ? allowedOrigins : [],

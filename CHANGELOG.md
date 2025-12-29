@@ -15,6 +15,35 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [Unreleased]
 
+### Added
+- **Radio planner script** – New script `scripts/radio-planner.ts` fills upcoming schedule gaps by following DIA!'s human curation logic:
+  - Genre-first selection with texture awareness (played/organic vs electronic)
+  - Energy-shaped by time of day (wakeup, warm, groove, club, night dayparts)
+  - Generates structured "PLANNER PACK" reports with proposals only (no DB writes)
+  - Supports CLI flags: `--days=7`, `--start="2025-01-15T00:00:00Z"`, `--dry-run`
+  - Uses existing `planOne` service for gap filling logic
+- **Schedule timing recovery script** – New script `scripts/fix-schedule-timing.sh` forces shows to end at scheduled time to recover from playout timing bugs:
+  - Accepts target end time in UTC ISO format
+  - Waits until target time, then skips current track in liquidsoap
+  - Forces playout to transition to next show on schedule
+  - Prevents schedule cascade when shows start late due to playout bugs
+
+### Fixed
+- **CORS configuration for Authorization headers** – Updated Payload CORS configuration to explicitly support `Authorization` headers required for frontend Bearer token authentication:
+  - Changed from simple origins array to explicit CORS object configuration
+  - Added `credentials: true` to allow cookies/credentials
+  - Explicitly listed `Authorization` and `Content-Type` headers
+  - Explicitly listed HTTP methods: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`
+  - Resolves frontend authentication issues when sending Authorization headers
+
+### Changed
+- **Stream health monitoring documentation** – Updated `docs/STREAM_HEALTH_MONITORING.md` with:
+  - Documentation that Bug #1 (hourly boundary timing) is still occurring as of Dec 22, 2025
+  - Recent occurrence example showing show skipped entirely and started 33 minutes late
+  - Impact analysis: shows start late (30+ minutes), schedule cascades, manual intervention required
+  - Documentation of new `fix-schedule-timing.sh` recovery script usage
+  - Updated status to reflect ongoing nature of the bug
+
 ---
 
 ## [2025-12-19] - Inbox Hydration Script Implementation

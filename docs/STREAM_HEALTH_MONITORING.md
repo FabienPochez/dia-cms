@@ -6,9 +6,9 @@ LibreTime playout service has a timing detection bug where it fails to recognize
 
 ## Root Cause Analysis
 
-### Bug #1: Hourly Boundary Timing (Original Discovery)
+### Bug #1: Hourly Boundary Timing (Original Discovery) ⚠️ STILL OCCURRING
 
-**Symptom**: At 10:00 show transition, playout got stuck:
+**Symptom**: At hourly show transitions, playout gets stuck:
 ```
 10:00:00 | Playout: "waiting 3599.995474s until next scheduled item"
          | Translation: Waiting for 11:00 instead of playing 10:00-11:00 show!
@@ -17,11 +17,30 @@ LibreTime playout service has a timing detection bug where it fails to recognize
          | Immediately starts playing correctly
 ```
 
+**Recent Occurrence** (Dec 22, 2025):
+```
+09:00:00 UTC | Playout: "Queue post-play: next_start_utc=2025-12-22T23:00:00Z"
+              | Translation: Skipped 09:00-11:00 show entirely!
+09:33:04 UTC | Playout restarted/detected show, started 33 minutes late
+              | cue_in=1985 seconds (~33 min offset)
+              | Show will end 33 minutes late, cascading delay to all subsequent shows
+```
+
 **Root Cause**: LibreTime playout's schedule window detection logic has a bug where it:
 1. Fails to detect that current time falls within a scheduled show window
 2. Calculates "next show" incorrectly at hourly boundaries
-3. Gets stuck waiting for the wrong time
-4. Requires restart to re-evaluate the schedule correctly
+3. Gets stuck waiting for the wrong time (sometimes skipping shows entirely)
+4. When detected late, starts shows with incorrect cue_in, causing permanent schedule offset
+5. Requires restart to re-evaluate the schedule correctly
+
+**Impact**: 
+- Shows start late (can be 30+ minutes)
+- Schedule cascades - all subsequent shows start late
+- Manual intervention required to get back on schedule
+
+**Workaround**: 
+- Script `/srv/payload/scripts/fix-schedule-timing.sh` can force shows to end at scheduled time
+- Health check should detect and restart, but timing offset persists until manually corrected
 
 ### Bug #2: Long Track Cascade (Nov 4, 2025 Discovery) 🆕
 
@@ -243,6 +262,24 @@ docker exec -i libretime-postgres-1 psql -U libretime -d libretime -c \
 
 ---
 
-**Last Updated**: 2025-11-06  
-**Status**: Health check deployed with long track detection
+**Last Updated**: 2025-12-22  
+**Status**: Health check deployed with long track detection. Bug #1 still occurring - see recent occurrence above.
+
+## Recovery Scripts
+
+### fix-schedule-timing.sh
+
+When a show starts late due to Bug #1, use this script to force it to end at the scheduled time:
+
+```bash
+# Force current show to end at scheduled time
+/srv/payload/scripts/fix-schedule-timing.sh 2025-12-22T11:00:00Z
+```
+
+This will:
+1. Wait until the target end time
+2. Skip the current track in liquidsoap
+3. Force playout to transition to the next show on time
+
+**Usage**: Run this immediately after detecting a late start to prevent schedule cascade.
 
