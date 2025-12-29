@@ -288,3 +288,9 @@ upstream: "fastcgi://172.19.0.7:9000"
 
 **Next Steps:** Choose fix option based on priority and feasibility. Option A (fix PHP-FPM) should be attempted first as it's the root cause of 502 errors.
 
+
+
+
+
+
+

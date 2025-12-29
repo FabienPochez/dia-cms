@@ -227,3 +227,9 @@ This fix unblocks the `/rest/media` endpoint. Remaining issues for Inbox Hydrati
 
 **Status:** ✅ **Fix Complete** - nginx → PHP-FPM connection restored. `/rest/media` endpoint is no longer returning `502` errors.
 
+
+
+
+
+
+
