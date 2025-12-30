@@ -38,9 +38,10 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ### Fixed
 - **Unscheduling episodes from New tab** – Fixed issue where unscheduling an episode from the New tab would set `airStatus` to 'draft' instead of 'queued', causing the episode to disappear from the New tab list:
-  - `clearEpisodeScheduleLocal` now fetches episode data before unscheduling
-  - Episodes that are published and LT-ready are restored to 'queued' (New tab)
-  - Other episodes are set to 'draft' (Archive tab behavior preserved)
+  - Updated `handleDeleteSchedule` and `clearEpisodeScheduleLocal` to fetch episode data before unscheduling
+  - Episodes with `publishedStatus: 'submitted'` (New tab) are restored to 'queued' when unscheduled
+  - Episodes with `publishedStatus: 'published'` (Archive tab) are set to 'draft' when unscheduled
+  - New tab filter now requires both `airStatus: 'queued'` AND `publishedStatus: 'submitted'` to prevent Archive episodes from appearing in New tab
 
 ---
 

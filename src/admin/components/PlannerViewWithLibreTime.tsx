@@ -410,11 +410,36 @@ const PlannerViewWithLibreTime: React.FC = () => {
         return
       }
 
+      // Fetch episode first to determine target airStatus when unscheduling
+      const episodeResponse = await fetch(`/api/episodes/${episodeId}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!episodeResponse.ok) {
+        throw new Error(`Failed to fetch episode: ${episodeResponse.status} ${episodeResponse.statusText}`)
+      }
+
+      const episodeData = await episodeResponse.json()
+      
+      // Determine target airStatus when unscheduling:
+      // - Episodes with publishedStatus='submitted' (New tab) should revert to 'queued'
+      // - Episodes with publishedStatus='published' (Archive tab) should go to 'draft'
+      // This ensures New tab episodes reappear in the list, while Archive episodes don't leak into New tab
+      // (New tab filter requires publishedStatus='submitted', so Archive episodes won't appear there)
+      const isLtReady = episodeData.libretimeTrackId && episodeData.libretimeFilepathRelative
+      const isSubmitted = episodeData.publishedStatus === 'submitted'
+      // Restore to 'queued' for submitted LT-ready episodes (New tab), 'draft' otherwise
+      const targetAirStatus = isSubmitted && isLtReady ? 'queued' : 'draft'
+
       // Clear episode schedule in Payload
       const updateResult = await updateEpisodeSchedule(episodeId, {
         scheduledAt: undefined,
         scheduledEnd: undefined,
-        airStatus: 'draft',
+        airStatus: targetAirStatus,
         libretimeScheduleId: undefined,
       })
 
@@ -556,21 +581,14 @@ const PlannerViewWithLibreTime: React.FC = () => {
         const episodeData = await episodeResponse.json()
         
         // Determine target airStatus when unscheduling:
-        // - Episodes from New tab (originally airStatus='queued') should revert to 'queued'
-        // - Episodes from Archive tab should go to 'draft' (existing behavior)
-        // 
-        // Since we can't track original airStatus after scheduling, we use a heuristic:
-        // New tab episodes are published, LT-ready, and were queued before scheduling.
-        // Archive tab episodes are published, LT-ready, but were not queued.
-        // 
-        // Simple approach: If episode is published and LT-ready, restore to 'queued' so it appears
-        // in New tab. This works for New tab episodes. Archive episodes that get unscheduled
-        // would also go to 'queued', but the user confirmed this is acceptable since Archive
-        // episodes are typically not unscheduled via this path (they use different flow).
+        // - Episodes with publishedStatus='submitted' (New tab) should revert to 'queued'
+        // - Episodes with publishedStatus='published' (Archive tab) should go to 'draft'
+        // This ensures New tab episodes reappear in the list, while Archive episodes don't leak into New tab
+        // (New tab filter requires publishedStatus='submitted', so Archive episodes won't appear there)
         const isLtReady = episodeData.libretimeTrackId && episodeData.libretimeFilepathRelative
-        const isPublished = episodeData.publishedStatus === 'published'
-        // Restore to 'queued' for published LT-ready episodes (New tab), 'draft' otherwise
-        const targetAirStatus = isPublished && isLtReady ? 'queued' : 'draft'
+        const isSubmitted = episodeData.publishedStatus === 'submitted'
+        // Restore to 'queued' for submitted LT-ready episodes (New tab), 'draft' otherwise
+        const targetAirStatus = isSubmitted && isLtReady ? 'queued' : 'draft'
 
         const response = await fetch(`/api/episodes/${episodeId}`, {
           method: 'PATCH',

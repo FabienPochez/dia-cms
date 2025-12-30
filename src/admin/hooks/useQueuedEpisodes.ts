@@ -36,8 +36,11 @@ export const useQueuedEpisodes = ({
       setError(null)
 
       // Build query parameters for queued episodes that are LT-ready
+      // Filter by airStatus='queued' AND publishedStatus='submitted' to ensure only
+      // newly uploaded episodes appear (not Archive episodes that get unscheduled)
       const query: Record<string, any> = {
         'where[airStatus][equals]': 'queued',
+        'where[publishedStatus][equals]': 'submitted',
         'where[libretimeTrackId][exists]': true,
         'where[libretimeTrackId][not_equals]': '',
         'where[libretimeFilepathRelative][exists]': true,
