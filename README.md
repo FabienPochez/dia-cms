@@ -393,10 +393,11 @@ With the SSH config entry:
 
 ```ssh-config
 Host diaradio-prod
-    HostName 46.62.141.69
-    User root
-    LocalForward 3000 localhost:3000
-    LocalForward 3300 localhost:3000
+  HostName 46.62.215.187
+  User fab
+  LocalForward 3000 localhost:3000
+  LocalForward 3300 localhost:3300
+
 ```
 
 Once the tunnel is active:

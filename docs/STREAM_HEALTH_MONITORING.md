@@ -262,8 +262,39 @@ docker exec -i libretime-postgres-1 psql -U libretime -d libretime -c \
 
 ---
 
-**Last Updated**: 2025-12-22  
-**Status**: Health check deployed with long track detection. Bug #1 still occurring - see recent occurrence above.
+**Last Updated**: 2025-12-30  
+**Status**: Health check deployed with long track detection. Bug #1 still occurring - see recent occurrences below.
+
+### Bug #1 Recent Occurrence (Dec 30, 2025)
+
+**Time**: 10:05-10:13 UTC (11:05-11:13 Paris time)  
+**Symptom**: Stream silent, no "on air" indicator, no jingles playing
+
+**Evidence**:
+```
+Database shows show scheduled: 09:00-11:00 UTC (should be playing NOW)
+Playout logs show:
+  first_start_utc=2025-12-30T11:00:00Z
+  now_utc=2025-12-30T10:11:32.931158Z
+  wait=2907.069s
+  "waiting 2907.068842s until next scheduled item"
+```
+
+**Root Cause**: Playout incorrectly calculated "next show" as 11:00 UTC instead of recognizing that current time (10:11 UTC) falls within the scheduled show window (09:00-11:00 UTC).
+
+**File Status**: ✅ File exists at `/srv/media/imported/1/Doum/strange how you move/685e6a54b3ef76e0e25c192b__strange-how-you-move__.mp3`  
+**Schedule Status**: ✅ Schedule entry exists (ID 2485) with correct file_id (944)  
+**Playout Status**: ❌ Playout waiting for wrong time, not playing current show
+
+**Fix**: Restart playout service to force schedule re-evaluation:
+```bash
+cd /srv/libretime && docker compose restart playout liquidsoap
+```
+
+**Investigation Notes**:
+- Health check should detect this (stream silent for >2 minutes)
+- Check `/var/log/dia-cron/stream-health.log` to see if health check ran
+- If health check didn't catch it, may need to improve detection logic
 
 ## Recovery Scripts
 
