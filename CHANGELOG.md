@@ -17,6 +17,72 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-30] - Planner "Live" Tab with Live Draft Episode Management
+
+### Added
+- **Planner "Live" tab** – Added "Live" tab to Planner EventPalette that displays active shows (`status="active"`):
+  - Shows are displayed in a grid layout with cover images, titles, hosts, and "LIVE" badge
+  - Client-side search filtering by show title, slug, or host names
+  - Created `useActiveShows` hook to fetch active shows with search support
+  - Drag-and-drop shows from Live tab into planner calendar to schedule Live episodes
+  - Tab state persists in localStorage (shared with Archive/New tabs)
+
+- **Live Draft Episode system** – Implemented intelligent reuse-or-create logic for Live Draft episodes:
+  - When dropping a show from Live tab, system searches for existing eligible Live Draft episode:
+    - Criteria: `isLive=true`, `airStatus` in `{'draft', 'scheduled'}`, `firstAiredAt` is null, no `media`, no `libretimeTrackId`, `publishedStatus='draft'`, `pendingReview=false`
+  - If valid Live Draft episode found, reuses it (ensures `isLive=true` is set)
+  - If no eligible episode found, creates new Live Draft episode with minimal required fields
+  - Prevents reuse of upload form episodes (which have `media` or `libretimeTrackId`)
+  - Post-fetch validation ensures strict compliance with Live Draft criteria
+
+- **Live episode scheduling** – Live episodes use Payload-only scheduling (no LibreTime track required):
+  - `handleCreateSchedule` detects `isLive=true` and skips `libretimeTrackId` requirement
+  - Live episodes are scheduled directly via `persistEpisodeScheduleLocal` (no LibreTime API calls)
+  - Appropriate for live broadcasts that don't have pre-recorded audio files
+
+- **Live episode unscheduling** – Live episodes persist when unscheduled:
+  - When removing Live episode from calendar, reverts to `airStatus='draft'` and clears `scheduledAt`/`scheduledEnd`
+  - Episode is NOT deleted, allowing reuse for future scheduling
+  - `isLive=true` flag is preserved
+
+### Changed
+- **Planner calendar visual differentiation for Live episodes** – Added red border and neutral-300 background styling to calendar events for Live episodes (`isLive: true`):
+  - Added `isLive` to `ScheduledEpisode` interface and calendar event `extendedProps`
+  - Updated `useScheduledEpisodes` to include `isLive` in episode data
+  - Updated `persistEpisodeScheduleLocal` to fetch and include `isLive` in temporary entries for immediate visual feedback
+  - Added `episode-live` CSS class that applies:
+    - 2px solid red border (`#dc2626`)
+    - Neutral-300 background (`#d4d4d8`)
+    - Neutral-950 text color (`#0a0a0a`) for readability
+    - Box shadow for depth
+  - Live episodes are now visually distinct from Archive and New tab episodes when scheduled in the planner
+
+- **EventPalette component** – Updated to support Live tab with show drag-and-drop:
+  - Added conditional rendering for Live tab with show cards
+  - Separate Draggable initialization for shows (`.fc-show` selector) vs episodes (`.fc-episode` selector)
+  - Show drag data includes `showId` and `isShow: true` marker for drop handling
+  - Filter state initialization moved before `useActiveShows` hook to prevent initialization errors
+
+- **PlannerViewWithLibreTime component** – Enhanced `handleEventReceive` to handle show drops:
+  - Detects show drops via `isShow: true` in event `extendedProps`
+  - Implements search-and-validate logic for Live Draft episode reuse
+  - Creates new Live Draft episodes with proper field defaults when needed
+  - Updated `handleDeleteSchedule` and `clearEpisodeScheduleLocal` to handle Live episodes (revert to draft, don't delete)
+
+- **CSRF configuration** – Updated for development environment compatibility:
+  - Added `http://localhost:3300` to `allowedOrigins` for dev server access
+  - CSRF protection now allows localhost origins in development mode:
+    - `http://localhost:3000`, `http://localhost:3300`, `http://localhost:5173`
+    - `http://127.0.0.1:3000`, `http://127.0.0.1:3300`
+  - Production mode remains strict (only `allowedOrigins`)
+
+### Fixed
+- **Live episode scheduling validation** – Fixed issue where Live episodes were incorrectly rejected for missing `libretimeTrackId`:
+  - `handleCreateSchedule` now checks `isLive` status before requiring LibreTime track ID
+  - Live episodes bypass LibreTime validation and use Payload-only scheduling
+
+---
+
 ## [2025-12-30] - Episodes Schema: Add `isLive` and Move `firstAiredAt`
 
 ### Added

@@ -168,6 +168,7 @@ const PlannerViewWithLibreTime: React.FC = () => {
       mood: episode.mood,
       tone: episode.tone,
       publishedStatus: episode.publishedStatus, // Include to identify New tab episodes
+      isLive: episode.isLive === true, // Include to identify Live episodes
     },
   }))
 
@@ -206,11 +207,27 @@ const PlannerViewWithLibreTime: React.FC = () => {
       const episodeResponse = await fetchEpisodeWithRetry()
 
       const episodeData = await episodeResponse.json()
+      const isLive = episodeData.isLive === true
       const libretimeTrackId = episodeData.libretimeTrackId
 
-      if (!libretimeTrackId) {
+      console.log('[PLANNER] Episode data:', {
+        episodeId,
+        isLive,
+        isLiveValue: episodeData.isLive,
+        libretimeTrackId,
+        hasLibretimeTrackId: !!libretimeTrackId,
+      })
+
+      // Live episodes don't require LibreTime track ID (they're live broadcasts, not pre-recorded files)
+      if (!isLive && !libretimeTrackId) {
         showToast('Episode has no LibreTime track ID - cannot schedule', 'error')
         return
+      }
+
+      // For Live episodes, use Payload-only scheduling (no LibreTime track needed)
+      if (isLive) {
+        console.log('[PLANNER] Scheduling Live episode (Payload-only, no LibreTime track required)')
+        return await persistEpisodeScheduleLocal(episodeId, start, end, title)
       }
 
       const scheduleData: EpisodeScheduleData = {
@@ -427,14 +444,16 @@ const PlannerViewWithLibreTime: React.FC = () => {
       const episodeData = await episodeResponse.json()
       
       // Determine target airStatus when unscheduling:
+      // - Live episodes (isLive=true): always revert to 'draft' (never delete)
       // - Episodes with publishedStatus='submitted' (New tab) should revert to 'queued'
       // - Episodes with publishedStatus='published' (Archive tab) should go to 'draft'
       // This ensures New tab episodes reappear in the list, while Archive episodes don't leak into New tab
       // (New tab filter requires publishedStatus='submitted', so Archive episodes won't appear there)
+      const isLive = episodeData.isLive === true
       const isLtReady = episodeData.libretimeTrackId && episodeData.libretimeFilepathRelative
       const isSubmitted = episodeData.publishedStatus === 'submitted'
-      // Restore to 'queued' for submitted LT-ready episodes (New tab), 'draft' otherwise
-      const targetAirStatus = isSubmitted && isLtReady ? 'queued' : 'draft'
+      // Live episodes always go to 'draft', otherwise restore to 'queued' for submitted LT-ready episodes (New tab), 'draft' otherwise
+      const targetAirStatus = isLive ? 'draft' : isSubmitted && isLtReady ? 'queued' : 'draft'
 
       // Clear episode schedule in Payload
       const updateResult = await updateEpisodeSchedule(episodeId, {
@@ -505,6 +524,22 @@ const PlannerViewWithLibreTime: React.FC = () => {
 
         console.log('[PLANNER] Episode scheduled locally:', episodeId)
 
+        // Fetch episode data to get isLive status for visual indicator
+        let isLive = false
+        try {
+          const episodeResponse = await fetch(`/api/episodes/${episodeId}`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          })
+          if (episodeResponse.ok) {
+            const episodeData = await episodeResponse.json()
+            isLive = episodeData.isLive === true
+          }
+        } catch (err) {
+          console.warn('[PLANNER] Failed to fetch episode data for isLive, continuing without it:', err)
+        }
+
         // Add to local state immediately for instant feedback
         const newEpisode: ScheduledEpisode = {
           episodeId,
@@ -512,6 +547,7 @@ const PlannerViewWithLibreTime: React.FC = () => {
           start,
           end,
           durationMinutes: Math.round((end.getTime() - start.getTime()) / (1000 * 60)),
+          isLive: isLive || undefined,
         }
         setNewlyAddedEpisodes((prev) => [...prev, newEpisode])
 
@@ -582,14 +618,16 @@ const PlannerViewWithLibreTime: React.FC = () => {
         const episodeData = await episodeResponse.json()
         
         // Determine target airStatus when unscheduling:
+        // - Live episodes (isLive=true): always revert to 'draft' (never delete)
         // - Episodes with publishedStatus='submitted' (New tab) should revert to 'queued'
         // - Episodes with publishedStatus='published' (Archive tab) should go to 'draft'
         // This ensures New tab episodes reappear in the list, while Archive episodes don't leak into New tab
         // (New tab filter requires publishedStatus='submitted', so Archive episodes won't appear there)
+        const isLive = episodeData.isLive === true
         const isLtReady = episodeData.libretimeTrackId && episodeData.libretimeFilepathRelative
         const isSubmitted = episodeData.publishedStatus === 'submitted'
-        // Restore to 'queued' for submitted LT-ready episodes (New tab), 'draft' otherwise
-        const targetAirStatus = isSubmitted && isLtReady ? 'queued' : 'draft'
+        // Live episodes always go to 'draft', otherwise restore to 'queued' for submitted LT-ready episodes (New tab), 'draft' otherwise
+        const targetAirStatus = isLive ? 'draft' : isSubmitted && isLtReady ? 'queued' : 'draft'
 
         const response = await fetch(`/api/episodes/${episodeId}`, {
           method: 'PATCH',
@@ -627,10 +665,179 @@ const PlannerViewWithLibreTime: React.FC = () => {
   // Handle event receive (drop from palette)
   const handleEventReceive = useCallback(async (info: any) => {
     const episodeId = info.event.extendedProps?.episodeId
+    const showId = info.event.extendedProps?.showId
+    const isShow = info.event.extendedProps?.isShow
     const start = info.event.start
     const durationMinutes = info.event.extendedProps?.durationMinutes || 60
     const title = info.event.title
 
+    // Handle show drops (Live tab) - find/reuse or create Live Draft episode, then schedule
+    if (isShow && showId) {
+      if (!start) {
+        console.error('[PLANNER] Missing start time for show drop')
+        info.event.remove()
+        return
+      }
+
+      try {
+        const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
+
+        // Step 1: Look for existing Live Draft episode for this show
+        // Criteria: isLive=true, no media (not from upload form), draft/scheduled, not yet aired
+        console.log('[PLANNER] Looking for existing Live Draft episode for show:', showId)
+        const searchParams = new URLSearchParams({
+          where: JSON.stringify({
+            and: [
+              { show: { equals: showId } },
+              { isLive: { equals: true } },
+              {
+                or: [
+                  { airStatus: { equals: 'draft' } },
+                  { airStatus: { equals: 'scheduled' } },
+                ],
+              },
+              { firstAiredAt: { exists: false } },
+              // Exclude episodes with media (upload form episodes have media)
+              { media: { exists: false } },
+              // Exclude episodes with LibreTime track ID (upload form episodes have this)
+              { libretimeTrackId: { exists: false } },
+              // Ensure it's a draft (not submitted from upload form)
+              { publishedStatus: { equals: 'draft' } },
+              // Ensure it's not pending review (upload form episodes have this)
+              { pendingReview: { equals: false } },
+            ],
+          }),
+          limit: '1',
+        })
+        const searchResponse = await fetch(`/api/episodes?${searchParams.toString()}`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        if (!searchResponse.ok) {
+          throw new Error(`Failed to search for Live Draft episode: ${searchResponse.status}`)
+        }
+
+        const searchData = await searchResponse.json()
+        let targetEpisodeId: string | null = null
+
+        if (searchData.docs && searchData.docs.length > 0) {
+          // Found a potential match - validate it before reusing
+          const candidateEpisode = searchData.docs[0]
+          const candidateId = candidateEpisode.id
+          
+          console.log('[PLANNER] Found potential Live Draft episode, validating:', candidateId)
+          
+          // Fetch full episode data to validate
+          const validateResponse = await fetch(`/api/episodes/${candidateId}`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          })
+          
+          if (!validateResponse.ok) {
+            console.log('[PLANNER] Failed to fetch candidate episode for validation, will create new one')
+          } else {
+            const episodeData = await validateResponse.json()
+            
+            // Validate it's a true Live Draft episode (not from upload form)
+            const isValidLiveDraft =
+              episodeData.isLive === true &&
+              !episodeData.media &&
+              !episodeData.libretimeTrackId &&
+              episodeData.publishedStatus === 'draft' &&
+              episodeData.pendingReview === false &&
+              (episodeData.airStatus === 'draft' || episodeData.airStatus === 'scheduled')
+            
+            if (isValidLiveDraft) {
+              // Valid Live Draft episode - reuse it
+              targetEpisodeId = candidateId
+              console.log('[PLANNER] Validated Live Draft episode, reusing:', targetEpisodeId)
+            } else {
+              console.log('[PLANNER] Candidate episode failed validation (not a true Live Draft), will create new one:', {
+                isLive: episodeData.isLive,
+                hasMedia: !!episodeData.media,
+                hasLibretimeTrackId: !!episodeData.libretimeTrackId,
+                publishedStatus: episodeData.publishedStatus,
+                pendingReview: episodeData.pendingReview,
+                airStatus: episodeData.airStatus,
+              })
+            }
+          }
+        }
+        
+        if (!targetEpisodeId) {
+          // No valid Live Draft episode found - create new one
+          // Create new Live Draft episode
+          console.log('[PLANNER] No existing Live Draft episode found, creating new one')
+          const createResponse = await fetch('/api/episodes', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              show: showId,
+              title: title || 'Live Episode',
+              publishedStatus: 'draft',
+              airStatus: 'draft', // Will be set to 'scheduled' by scheduling logic
+              isLive: true,
+              pendingReview: false,
+              publishedAt: start.toISOString(), // Required field
+            }),
+          })
+
+          if (!createResponse.ok) {
+            const errorText = await createResponse.text().catch(() => createResponse.statusText)
+            let errorData: any = {}
+            try {
+              errorData = JSON.parse(errorText)
+            } catch {
+              errorData = { message: errorText }
+            }
+            console.error('[PLANNER] Failed to create Live Draft episode:', {
+              status: createResponse.status,
+              statusText: createResponse.statusText,
+              error: errorData,
+              headers: Object.fromEntries(createResponse.headers.entries()),
+            })
+            throw new Error(
+              `Failed to create Live Draft episode: ${createResponse.status} ${createResponse.statusText} - ${errorData.message || errorData.error || errorText}`,
+            )
+          }
+
+          const newEpisode = await createResponse.json()
+          targetEpisodeId = newEpisode.id || newEpisode.doc?.id
+
+          if (!targetEpisodeId) {
+            throw new Error('Live Draft episode created but no ID returned')
+          }
+
+          console.log('[PLANNER] Created new Live Draft episode:', targetEpisodeId)
+        }
+
+        // Step 2: Schedule the episode using existing logic
+        await debouncedCreateSchedule.current(targetEpisodeId, start, end, title)
+
+        // Set the event ID to match our pattern
+        info.event.setProp('id', `ev:${targetEpisodeId}`)
+        info.event.setExtendedProp('episodeId', targetEpisodeId) // Update extendedProps for consistency
+
+        // Emit SCHEDULED event for palette sync
+        plannerBus.emitScheduled(targetEpisodeId, start.toISOString())
+      } catch (error) {
+        console.error('[PLANNER] Failed to create/reuse and schedule Live Draft episode:', error)
+        showToast(
+          `Failed to schedule live episode: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          'error',
+        )
+        info.event.remove()
+      }
+      return
+    }
+
+    // Handle episode drops (Archive/New tabs) - existing logic
     if (!episodeId || !start) {
       console.error('[PLANNER] Missing episodeId or start time')
       info.event.remove()

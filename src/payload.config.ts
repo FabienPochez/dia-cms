@@ -35,6 +35,7 @@ const allowedOrigins = corsOriginsEnv
       'https://dia-web.vercel.app',
       'http://localhost:5173',
       'http://localhost:3000',
+      'http://localhost:3300', // Dev server port
     ]
 
 //console.log('[payload] Booting with CORS allowedOrigins:', allowedOrigins)
@@ -138,6 +139,15 @@ export default buildConfig({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   },
 
-  // CSRF: relaxed in dev, strict in prod
-  csrf: process.env.NODE_ENV === 'production' ? allowedOrigins : [],
+  // CSRF: allow localhost origins in dev, strict in prod
+  csrf:
+    process.env.NODE_ENV === 'production'
+      ? allowedOrigins
+      : [
+          'http://localhost:3000',
+          'http://localhost:3300',
+          'http://localhost:5173',
+          'http://127.0.0.1:3000',
+          'http://127.0.0.1:3300',
+        ],
 })

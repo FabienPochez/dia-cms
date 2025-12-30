@@ -92,6 +92,7 @@ export const useScheduledEpisodes = (): UseScheduledEpisodesReturn => {
           mood: episode.mood,
           tone: episode.tone,
           publishedStatus: episode.publishedStatus, // Include to identify New tab episodes
+          isLive: episode.isLive === true, // Include to identify Live episodes
         }
       })
 

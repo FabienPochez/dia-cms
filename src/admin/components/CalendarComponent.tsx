@@ -243,6 +243,12 @@ const CalendarComponent = React.forwardRef<FullCalendar, CalendarComponentProps>
           classes.push('episode-new')
         }
 
+        // Live episode indicator (isLive=true)
+        const isLive = arg.event.extendedProps?.isLive
+        if (isLive === true) {
+          classes.push('episode-live')
+        }
+
         return classes
       },
       [selectedEvent],
@@ -341,6 +347,7 @@ const CalendarComponent = React.forwardRef<FullCalendar, CalendarComponentProps>
                 overflow: 'hidden',
                 fontSize: '12px',
                 lineHeight: '1.2',
+                color: 'rgba(23, 23, 23, 1)',
               }}
             >
               {eventInfo.event.title}
@@ -584,6 +591,14 @@ const CalendarComponent = React.forwardRef<FullCalendar, CalendarComponentProps>
           :global(.fc-event.episode-new) {
             border: 2px solid #000 !important;
             box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1) !important;
+          }
+
+          /* Live episode indicator - red border to make it pop */
+          :global(.fc-event.episode-live) {
+            border: 2px solid #dc2626 !important;
+            box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.1) !important;
+            background-color: #d4d4d8 !important; /* neutral-300 */
+            color: #0a0a0a !important; /* neutral-950 */
           }
 
           /* Mood/Tone badges - positioned at bottom */

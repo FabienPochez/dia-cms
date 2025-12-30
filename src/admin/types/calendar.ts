@@ -24,6 +24,7 @@ export interface CalendarEvent {
     mood?: string | string[] | null
     tone?: string | string[] | null
     publishedStatus?: 'draft' | 'submitted' | 'published' | 'scheduled'
+    isLive?: boolean
   }
 }
 
@@ -67,4 +68,5 @@ export interface ScheduledEpisode {
   mood?: string | string[] | null
   tone?: string | string[] | null
   publishedStatus?: 'draft' | 'submitted' | 'published' | 'scheduled'
+  isLive?: boolean
 }

@@ -5,6 +5,7 @@ import { isLtReady } from '../types/calendar'
 import { Draggable } from '@fullcalendar/interaction'
 import { useUnscheduledEpisodes } from '../hooks/useUnscheduledEpisodes'
 import { useQueuedEpisodes } from '../hooks/useQueuedEpisodes'
+import { useActiveShows } from '../hooks/useActiveShows'
 import { useEpisodeFilters } from '../hooks/useEpisodeFilters'
 import { applyFilters } from '../lib/filterPredicates'
 import { EpisodeFilters } from './EpisodeFilters'
@@ -55,13 +56,7 @@ const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
     limit: activeTab === 'new' ? 2000 : 0,
   })
 
-  // Select episodes, loading, error, and refetch based on active tab
-  const allEpisodes = activeTab === 'archive' ? archiveEpisodes : activeTab === 'new' ? queuedEpisodes : []
-  const loading = activeTab === 'archive' ? archiveLoading : activeTab === 'new' ? queuedLoading : false
-  const error = activeTab === 'archive' ? archiveError : activeTab === 'new' ? queuedError : null
-  const refetch = activeTab === 'archive' ? archiveRefetch : activeTab === 'new' ? queuedRefetch : () => {}
-
-  // Namespaced filter state
+  // Namespaced filter state (must be initialized before useActiveShows)
   const getFilterKey = (tab: string) => `planner.filters.v1.${tab}`
   const archiveFilters = useEpisodeFilters(getFilterKey('archive'))
   const newFilters = useEpisodeFilters(getFilterKey('new'))
@@ -85,6 +80,22 @@ const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
     setPlayCountMax,
     clearAll,
   } = filterState
+
+  const {
+    shows: activeShows,
+    loading: showsLoading,
+    error: showsError,
+    refetch: showsRefetch,
+  } = useActiveShows({
+    searchQuery: activeTab === 'live' ? filters.search : '',
+    limit: activeTab === 'live' ? 200 : 0,
+  })
+
+  // Select episodes, loading, error, and refetch based on active tab
+  const allEpisodes = activeTab === 'archive' ? archiveEpisodes : activeTab === 'new' ? queuedEpisodes : []
+  const loading = activeTab === 'archive' ? archiveLoading : activeTab === 'new' ? queuedLoading : activeTab === 'live' ? showsLoading : false
+  const error = activeTab === 'archive' ? archiveError : activeTab === 'new' ? queuedError : activeTab === 'live' ? showsError : null
+  const refetch = activeTab === 'archive' ? archiveRefetch : activeTab === 'new' ? queuedRefetch : activeTab === 'live' ? showsRefetch : () => {}
 
   // Use deferred value for smooth typing
   const deferredFilters = useDeferredValue(debouncedFilters)
@@ -184,12 +195,20 @@ const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Create stable hash of episode IDs (include tab to force reinit on tab switch)
-    const currentHash = `${activeTab}:${episodes.map((ep) => ep.episodeId).join(',')}`
+    // Create stable hash of items (episodes or shows) - include tab to force reinit on tab switch
+    let currentHash: string
+    if (activeTab === 'live') {
+      currentHash = `${activeTab}:${activeShows.map((s) => s.id).join(',')}`
+    } else {
+      currentHash = `${activeTab}:${episodes.map((ep) => ep.episodeId).join(',')}`
+    }
 
-    // Only reinitialize if episode IDs or tab actually changed
+    // Only reinitialize if items or tab actually changed
     if (currentHash !== episodeIdsHashRef.current) {
-      console.log('🎯 Episode list or tab changed, re-initializing Draggable', { activeTab, episodeCount: episodes.length })
+      console.log('🎯 Item list or tab changed, re-initializing Draggable', {
+        activeTab,
+        itemCount: activeTab === 'live' ? activeShows.length : episodes.length,
+      })
 
       // Destroy existing Draggable
       if (draggableRef.current) {
@@ -197,28 +216,50 @@ const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
         draggableRef.current = null
       }
 
-      // Create new Draggable if we have episodes
-      if (episodes.length > 0) {
-        draggableRef.current = new Draggable(containerRef.current, {
-          itemSelector: '.fc-episode:not(.disabled)',
-          eventData: (el) => {
-            const durationMinutes = el.dataset.duration ? +el.dataset.duration : 60
-            return {
-              id: `tmp-${el.dataset.episodeId}`, // temp id to prevent conflicts
-              title: el.dataset.title,
-              duration: { minutes: durationMinutes },
-              extendedProps: {
-                episodeId: el.dataset.episodeId,
-                durationMinutes: durationMinutes,
-              },
-            }
-          },
-        })
+      // Create new Draggable if we have items
+      const itemCount = activeTab === 'live' ? activeShows.length : episodes.length
+      if (itemCount > 0) {
+        if (activeTab === 'live') {
+          // Draggable for shows
+          draggableRef.current = new Draggable(containerRef.current, {
+            itemSelector: '.fc-show',
+            eventData: (el) => {
+              const durationMinutes = el.dataset.duration ? +el.dataset.duration : 60
+              return {
+                id: `tmp-show-${el.dataset.showId}`, // temp id to prevent conflicts
+                title: el.dataset.title,
+                duration: { minutes: durationMinutes },
+                extendedProps: {
+                  showId: el.dataset.showId, // Use showId instead of episodeId
+                  durationMinutes: durationMinutes,
+                  isShow: true, // Marker to identify show drops
+                },
+              }
+            },
+          })
+        } else {
+          // Draggable for episodes
+          draggableRef.current = new Draggable(containerRef.current, {
+            itemSelector: '.fc-episode:not(.disabled)',
+            eventData: (el) => {
+              const durationMinutes = el.dataset.duration ? +el.dataset.duration : 60
+              return {
+                id: `tmp-${el.dataset.episodeId}`, // temp id to prevent conflicts
+                title: el.dataset.title,
+                duration: { minutes: durationMinutes },
+                extendedProps: {
+                  episodeId: el.dataset.episodeId,
+                  durationMinutes: durationMinutes,
+                },
+              }
+            },
+          })
+        }
       }
 
       episodeIdsHashRef.current = currentHash
     }
-  }, [episodes, activeTab])
+  }, [episodes, activeShows, activeTab])
 
   // Cleanup on unmount only
   useEffect(() => {
@@ -1217,24 +1258,224 @@ const EventPalette: React.FC<EventPaletteProps> = ({ onEpisodePlay }) => {
       )}
 
       {activeTab === 'live' && (
-        <div
-          style={{
-            flex: 1,
-            padding: '40px 20px',
-            textAlign: 'center',
-            color: '#6c757d',
-            backgroundColor: '#f8f9fa',
-            margin: '12px',
-            borderRadius: '4px',
-          }}
-        >
-          <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600' }}>
-            Live Episodes
-          </h3>
-          <p style={{ margin: '0', fontSize: '14px' }}>
-            Coming soon — manage currently airing content
-          </p>
-        </div>
+        <>
+          {/* Search Input */}
+          <div style={{ marginBottom: '15px' }}>
+            <input
+              type="text"
+              placeholder="Search shows (title, slug, host)..."
+              value={filters.search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                fontSize: '14px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          {/* Loading State */}
+          {loading && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px',
+                color: '#666',
+              }}
+            >
+              Loading shows...
+            </div>
+          )}
+
+          {/* Error State */}
+          {error && (
+            <div
+              style={{
+                padding: '12px',
+                backgroundColor: '#f8d7da',
+                border: '1px solid #f5c6cb',
+                borderRadius: '4px',
+                color: '#721c24',
+                fontSize: '14px',
+                marginBottom: '15px',
+              }}
+            >
+              Error: {error}
+              <button
+                onClick={refetch}
+                style={{
+                  marginLeft: '10px',
+                  padding: '4px 8px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* Shows List */}
+          <div
+            ref={containerRef}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: '8px',
+              maxHeight: 'calc(100vh - 300px)',
+              overflowY: 'auto',
+            }}
+          >
+            {activeShows.length === 0 && !loading && !error && (
+              <div
+                style={{
+                  padding: '20px',
+                  textAlign: 'center',
+                  color: '#666',
+                  fontSize: '14px',
+                  gridColumn: '1 / -1',
+                }}
+              >
+                {filters.search ? 'No shows match your search.' : 'No active shows available.'}
+              </div>
+            )}
+
+            {activeShows.map((show) => {
+              // Extract cover URL (handle different formats)
+              let coverUrl: string | null = null
+              if (show.cover) {
+                if (typeof show.cover === 'string') {
+                  coverUrl = show.cover
+                } else if (show.cover.url) {
+                  coverUrl = show.cover.url
+                }
+              }
+
+              return (
+                <div
+                  key={show.id}
+                  className="fc-show"
+                  data-title={show.title}
+                  data-duration={60}
+                  data-show-id={show.id}
+                  style={{
+                    padding: '10px',
+                    backgroundColor: '#fff',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    cursor: 'grab',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                    userSelect: 'none',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f0f8ff'
+                    e.currentTarget.style.borderColor = '#007bff'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#fff'
+                    e.currentTarget.style.borderColor = '#ddd'
+                  }}
+                >
+                  {/* Cover Image */}
+                  {coverUrl && (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '60px',
+                        marginBottom: '8px',
+                        borderRadius: '3px',
+                        overflow: 'hidden',
+                        backgroundColor: '#e9ecef',
+                      }}
+                    >
+                      <img
+                        src={coverUrl}
+                        alt={show.title}
+                        loading="lazy"
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Title */}
+                  <div
+                    style={{
+                      fontWeight: '500',
+                      fontSize: '13px',
+                      marginBottom: '3px',
+                      color: '#333',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {show.title}
+                  </div>
+
+                  {/* Hosts */}
+                  {show.hosts && show.hosts.length > 0 && (
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: '#888',
+                        marginBottom: '4px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {show.hosts.map((h) => h.name || 'Host').join(', ')}
+                    </div>
+                  )}
+
+                  {/* Live Badge */}
+                  <div
+                    style={{
+                      fontSize: '10px',
+                      color: '#dc3545',
+                      backgroundColor: '#f8d7da',
+                      border: '1px solid #f5c6cb',
+                      borderRadius: '10px',
+                      padding: '2px 6px',
+                      display: 'inline-block',
+                      marginTop: '4px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    LIVE
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div
+            style={{
+              marginTop: '15px',
+              padding: '8px',
+              backgroundColor: '#e9ecef',
+              borderRadius: '4px',
+              fontSize: '12px',
+              color: '#6c757d',
+              textAlign: 'center',
+            }}
+          >
+            Drag shows to calendar to create scheduled Live episode
+          </div>
+        </>
       )}
     </div>
   )
