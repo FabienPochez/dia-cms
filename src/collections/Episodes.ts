@@ -336,6 +336,33 @@ const Episodes: CollectionConfig = {
                 update: hideFromHosts, // Hosts can't modify, but can query (for frontend app)
               },
             },
+            {
+              name: 'isLive',
+              type: 'checkbox',
+              label: 'Is Live',
+              defaultValue: false,
+              admin: {
+                description: 'Mark this episode as a live broadcast',
+                position: 'sidebar',
+              },
+            },
+            {
+              name: 'firstAiredAt',
+              type: 'date',
+              label: 'First Aired At',
+              required: false,
+              admin: {
+                description: 'When this episode first aired (updated by scripts/hooks)',
+                position: 'sidebar',
+                readOnly: true,
+                date: {
+                  pickerAppearance: 'dayAndTime',
+                },
+              },
+              access: {
+                update: () => false, // Only scripts/hooks can update
+              },
+            },
           ],
         },
         {
@@ -468,12 +495,6 @@ const Episodes: CollectionConfig = {
               name: 'airplayHours',
               type: 'number',
               defaultValue: 0,
-              admin: { readOnly: true },
-              access: { update: () => false },
-            },
-            {
-              name: 'firstAiredAt',
-              type: 'date',
               admin: { readOnly: true },
               access: { update: () => false },
             },

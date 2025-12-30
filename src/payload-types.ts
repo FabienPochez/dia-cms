@@ -358,6 +358,14 @@ export interface Episode {
    */
   scheduledEnd?: string | null;
   airStatus: 'draft' | 'queued' | 'scheduled' | 'airing' | 'aired' | 'failed';
+  /**
+   * Mark this episode as a live broadcast
+   */
+  isLive?: boolean | null;
+  /**
+   * When this episode first aired (updated by scripts/hooks)
+   */
+  firstAiredAt?: string | null;
   media?: (string | null) | MediaTrack;
   /**
    * ID from LibreTime system for this track
@@ -395,7 +403,6 @@ export interface Episode {
   plays?: number | null;
   likes?: number | null;
   airplayHours?: number | null;
-  firstAiredAt?: string | null;
   lastAiredAt?: string | null;
   airCount?: number | null;
   adminNotes?: string | null;
@@ -708,6 +715,8 @@ export interface EpisodesSelect<T extends boolean = true> {
   scheduledAt?: T;
   scheduledEnd?: T;
   airStatus?: T;
+  isLive?: T;
+  firstAiredAt?: T;
   media?: T;
   libretimeTrackId?: T;
   libretimeFilepathRelative?: T;
@@ -727,7 +736,6 @@ export interface EpisodesSelect<T extends boolean = true> {
   plays?: T;
   likes?: T;
   airplayHours?: T;
-  firstAiredAt?: T;
   lastAiredAt?: T;
   airCount?: T;
   adminNotes?: T;

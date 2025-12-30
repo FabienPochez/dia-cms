@@ -17,6 +17,22 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-30] - Episodes Schema: Add `isLive` and Move `firstAiredAt`
+
+### Added
+- **`isLive` field** – Added checkbox field to Episodes collection to mark episodes as live broadcasts:
+  - Default value: `false`
+  - Editable by admin/staff in admin panel
+  - Positioned in Scheduling section sidebar
+
+### Changed
+- **`firstAiredAt` field** – Moved from audit section to Scheduling section:
+  - Now positioned alongside other scheduling fields
+  - Made read-only in admin UI (can only be updated by scripts/hooks)
+  - Removed duplicate field definition
+
+---
+
 ## [2025-12-30] - Planner "New" Tab for Queued Episodes
 
 ### Added
