@@ -443,6 +443,7 @@ const PlannerViewWithLibreTime: React.FC = () => {
   // Fallback local scheduling (without LibreTime)
   const persistEpisodeScheduleLocal = useCallback(
     async (episodeId: string, start: Date, end: Date, title?: string) => {
+      console.log('[PLANNER] Attempting local schedule update:', { episodeId, start, end })
       try {
         const response = await fetch(`/api/episodes/${episodeId}`, {
           method: 'PATCH',
@@ -458,7 +459,22 @@ const PlannerViewWithLibreTime: React.FC = () => {
         })
 
         if (!response.ok) {
-          throw new Error(`Failed to schedule episode: ${response.status} ${response.statusText}`)
+          const errorText = await response.text().catch(() => response.statusText)
+          const errorData = (() => {
+            try {
+              return JSON.parse(errorText)
+            } catch {
+              return { message: errorText }
+            }
+          })()
+          console.error('[PLANNER] Schedule update failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+          })
+          throw new Error(
+            `Failed to schedule episode: ${response.status} ${response.statusText} - ${errorData.message || errorData.error || errorText}`,
+          )
         }
 
         console.log('[PLANNER] Episode scheduled locally:', episodeId)

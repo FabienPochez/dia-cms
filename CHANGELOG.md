@@ -15,6 +15,31 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [Unreleased]
 
+---
+
+## [2025-12-30] - Planner "New" Tab for Queued Episodes
+
+### Added
+- **Planner "New" tab** – Added "New" tab to Planner EventPalette that displays episodes with `airStatus="queued"`:
+  - Reuses existing Archive episode card UI (same visuals, filters, drag-and-drop)
+  - Supports all existing filters (search, mood, tone, energy, duration, play count)
+  - Drag-and-drop scheduling works identically to Archive tab
+  - Episodes remain queued after scheduling (no airStatus mutation per requirements)
+  - Created `useQueuedEpisodes` hook to fetch queued episodes with LT-ready checks
+  - Tab state persists in localStorage (`planner.palette.tab`)
+  - Filter state namespaced separately from Archive tab (`planner.filters.v1.new`)
+
+### Changed
+- **EventPalette component** – Updated to conditionally fetch episodes based on active tab:
+  - Archive tab uses `useUnscheduledEpisodes` (existing behavior)
+  - New tab uses `useQueuedEpisodes` (new hook)
+  - Draggable reinitializes on tab switch to ensure drag-and-drop works correctly
+  - Both tabs share the same episode card rendering and drag-and-drop logic
+
+---
+
+## [Unreleased]
+
 ### Added
 - **Radio planner script** – New script `scripts/radio-planner.ts` fills upcoming schedule gaps by following DIA!'s human curation logic:
   - Genre-first selection with texture awareness (played/organic vs electronic)
