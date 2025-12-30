@@ -23,6 +23,7 @@ export interface CalendarEvent {
     energy?: 'low' | 'medium' | 'high' | null
     mood?: string | string[] | null
     tone?: string | string[] | null
+    publishedStatus?: 'draft' | 'submitted' | 'published' | 'scheduled'
   }
 }
 
@@ -65,4 +66,5 @@ export interface ScheduledEpisode {
   energy?: 'low' | 'medium' | 'high' | null
   mood?: string | string[] | null
   tone?: string | string[] | null
+  publishedStatus?: 'draft' | 'submitted' | 'published' | 'scheduled'
 }

@@ -167,6 +167,7 @@ const PlannerViewWithLibreTime: React.FC = () => {
       energy: episode.energy,
       mood: episode.mood,
       tone: episode.tone,
+      publishedStatus: episode.publishedStatus, // Include to identify New tab episodes
     },
   }))
 

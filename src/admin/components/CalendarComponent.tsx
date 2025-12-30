@@ -237,6 +237,12 @@ const CalendarComponent = React.forwardRef<FullCalendar, CalendarComponentProps>
           classes.push('energy-none')
         }
 
+        // New tab episode indicator (publishedStatus='submitted')
+        const publishedStatus = arg.event.extendedProps?.publishedStatus
+        if (publishedStatus === 'submitted') {
+          classes.push('episode-new')
+        }
+
         return classes
       },
       [selectedEvent],
@@ -572,6 +578,12 @@ const CalendarComponent = React.forwardRef<FullCalendar, CalendarComponentProps>
 
           :global(.fc-event.energy-none) {
             /* No override - use FullCalendar defaults (blue) */
+          }
+
+          /* New tab episode indicator - black border to make it pop */
+          :global(.fc-event.episode-new) {
+            border: 2px solid #000 !important;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1) !important;
           }
 
           /* Mood/Tone badges - positioned at bottom */

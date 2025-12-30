@@ -43,6 +43,13 @@ This changelog documents all significant changes to the Payload CMS backend serv
   - Episodes with `publishedStatus: 'published'` (Archive tab) are set to 'draft' when unscheduled
   - New tab filter now requires both `airStatus: 'queued'` AND `publishedStatus: 'submitted'` to prevent Archive episodes from appearing in New tab
 
+### Changed
+- **Planner calendar visual differentiation** – Added black border styling to calendar events for episodes from the New tab (`publishedStatus: 'submitted'`):
+  - Added `publishedStatus` to `ScheduledEpisode` interface and calendar event `extendedProps`
+  - Updated `useScheduledEpisodes` to include `publishedStatus` in episode data
+  - Added `episode-new` CSS class that applies a 2px solid black border to New tab episodes in the calendar
+  - New tab episodes are now visually distinct from Archive episodes when scheduled in the planner
+
 ---
 
 ## [2025-12-30] - Upload Form Duration Extraction Fix
