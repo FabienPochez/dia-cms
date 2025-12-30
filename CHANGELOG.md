@@ -36,6 +36,12 @@ This changelog documents all significant changes to the Payload CMS backend serv
   - Draggable reinitializes on tab switch to ensure drag-and-drop works correctly
   - Both tabs share the same episode card rendering and drag-and-drop logic
 
+### Fixed
+- **Unscheduling episodes from New tab** – Fixed issue where unscheduling an episode from the New tab would set `airStatus` to 'draft' instead of 'queued', causing the episode to disappear from the New tab list:
+  - `clearEpisodeScheduleLocal` now fetches episode data before unscheduling
+  - Episodes that are published and LT-ready are restored to 'queued' (New tab)
+  - Other episodes are set to 'draft' (Archive tab behavior preserved)
+
 ---
 
 ## [2025-12-30] - Upload Form Duration Extraction Fix

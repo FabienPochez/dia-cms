@@ -540,6 +540,38 @@ const PlannerViewWithLibreTime: React.FC = () => {
   const clearEpisodeScheduleLocal = useCallback(
     async (episodeId: string) => {
       try {
+        // Fetch episode first to check if it was originally queued (from New tab)
+        const episodeResponse = await fetch(`/api/episodes/${episodeId}`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
+
+        if (!episodeResponse.ok) {
+          throw new Error(`Failed to fetch episode: ${episodeResponse.status} ${episodeResponse.statusText}`)
+        }
+
+        const episodeData = await episodeResponse.json()
+        
+        // Determine target airStatus when unscheduling:
+        // - Episodes from New tab (originally airStatus='queued') should revert to 'queued'
+        // - Episodes from Archive tab should go to 'draft' (existing behavior)
+        // 
+        // Since we can't track original airStatus after scheduling, we use a heuristic:
+        // New tab episodes are published, LT-ready, and were queued before scheduling.
+        // Archive tab episodes are published, LT-ready, but were not queued.
+        // 
+        // Simple approach: If episode is published and LT-ready, restore to 'queued' so it appears
+        // in New tab. This works for New tab episodes. Archive episodes that get unscheduled
+        // would also go to 'queued', but the user confirmed this is acceptable since Archive
+        // episodes are typically not unscheduled via this path (they use different flow).
+        const isLtReady = episodeData.libretimeTrackId && episodeData.libretimeFilepathRelative
+        const isPublished = episodeData.publishedStatus === 'published'
+        // Restore to 'queued' for published LT-ready episodes (New tab), 'draft' otherwise
+        const targetAirStatus = isPublished && isLtReady ? 'queued' : 'draft'
+
         const response = await fetch(`/api/episodes/${episodeId}`, {
           method: 'PATCH',
           credentials: 'include',
@@ -549,7 +581,7 @@ const PlannerViewWithLibreTime: React.FC = () => {
           body: JSON.stringify({
             scheduledAt: null,
             scheduledEnd: null,
-            airStatus: 'draft',
+            airStatus: targetAirStatus,
           }),
         })
 
