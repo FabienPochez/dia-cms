@@ -619,9 +619,14 @@ const Episodes: CollectionConfig = {
         }
 
         // Check if media changed (for updates) or is being set (for creates)
+        // This handles:
+        // 1. CREATE operations (always validate)
+        // 2. UPDATE where media is being set for the first time (pre-created episodes)
+        // 3. UPDATE where media is being changed to a different value
         const mediaChanged =
           _operation === 'create' ||
-          (originalDoc?.media && String(originalDoc.media) !== String(data.media))
+          (!originalDoc?.media && data.media) || // Media being set for first time
+          (originalDoc?.media && String(originalDoc.media) !== String(data.media)) // Media changed
 
         if (!mediaChanged) {
           return data

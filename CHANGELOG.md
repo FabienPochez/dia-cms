@@ -38,6 +38,17 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-30] - Upload Form Duration Extraction Fix
+
+### Fixed
+- **Upload form duration extraction** – Fixed audio validation hook in `Episodes.ts` to properly detect when media is being set for the first time on pre-created episodes:
+  - Previously, episodes created via `/api/episodes/new-draft` (pre-assigned ID) and then updated via PATCH to add media would skip validation
+  - Hook now correctly detects media being set for the first time using `(!originalDoc?.media && data.media)` condition
+  - Ensures `realDuration` and `roundedDuration` are automatically populated from audio file metadata during upload form submissions
+  - Fix applies to both CREATE operations and UPDATE operations where media is added for the first time
+
+---
+
 ## [Unreleased]
 
 ### Added
