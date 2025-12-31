@@ -5,7 +5,8 @@ set -euo pipefail
 
 ICECAST_URL="http://localhost:8000/admin/stats.xml"
 ICECAST_USER="admin"
-ICECAST_PASS="269e61fe1a5f06f15ccf7b526dacdfdb"
+# Try to get password from environment, fallback to old value
+ICECAST_PASS="${ICECAST_ADMIN_PASSWORD:-Wclzap2entCrO3elozblw6SOT}"
 STATE_FILE="/tmp/stream-health-state.json"
 LOG_FILE="/var/log/dia-cron/stream-health.log"
 RESTART_THRESHOLD=60

@@ -1,5 +1,79 @@
 ## Bug Log
 
+### 2025-12-31 – Payload-LibreTime sync bug: Show instance exists but playout entry missing
+- **When:** 2025-12-31 ~09:00-10:00 UTC (10:00-11:00 Paris time)
+- **Impact:** Stream stuck in jingle loop, show scheduled in Payload but not playing in LibreTime
+- **Symptoms:**
+  - Episode `68826599ba767f41743ca787` ("Gros Volume Sur La Molle #12 w/ Chach") scheduled in Payload
+  - Show instance exists in LibreTime (instance ID 407, 09:00-11:00 UTC)
+  - File exists at `/srv/media/imported/1/68826599ba767f41743ca787__gros-volume-sur-la-mol.mp3`
+  - **No playout entry** in `cc_schedule` table for that instance/time window
+  - Stream playing jingles instead of scheduled show
+  - LibreTime UI shows show instance but "nothing planned"
+- **Evidence:**
+  - Database query shows instance 407 exists but `playout_count = 0` for current time window
+  - Only past playout entry exists (ID 2449 from Dec 28) for instance 407
+  - After manual re-sync, playout entry created (ID 2504) and stream started playing
+- **Root cause (suspected):**
+  - Race condition during sync: episode scheduled in Payload, instance created in LibreTime, but playout entry creation failed or was skipped
+  - Possible timing issue where sync happened before instance was ready
+  - Or silent failure in playout creation step
+- **Fix:**
+  - Manual re-sync of planner resolved the issue
+  - Playout entry (ID 2504) was created and stream resumed
+- **Prevention:**
+  - Add validation to ensure playout entries are created when episodes are scheduled
+  - Add health check that detects show instances without playouts
+  - Consider auto-fix mechanism that creates missing playouts for existing instances
+- **Status:** Open – first occurrence, needs investigation
+- **Location:**
+  - Payload-LibreTime sync process
+  - `src/lib/services/scheduleOperations.ts` (planOne function)
+
+### 2025-12-30 – Stream silent: LibreTime hourly boundary timing bug + missing health check
+- **When:** 2025-12-30, 10:05-10:13 UTC (11:05-11:13 Paris time)
+- **Severity:** Critical (stream offline)
+- **Status:** ✅ Fixed (manual restart + health check configured)
+- **Impact:** Stream completely silent, no "on air" indicator, no jingles playing
+- **Symptoms:**
+  - Stream completely silent
+  - No "on air" indicator in LibreTime UI
+  - No jingles playing (normally jingle loop runs when no track)
+  - LibreTime playout service running but not playing content
+- **Root cause (confirmed):**
+  - **LibreTime Bug #1**: Hourly boundary timing detection failure
+  - Playout logs show incorrect timing calculation:
+    ```
+    2025-12-30 10:11:32 UTC:
+      first_start_utc=2025-12-30T11:00:00Z
+      now_utc=2025-12-30T10:11:32.931158Z
+      wait=2907.069s
+      "waiting 2907.068842s until next scheduled item"
+    ```
+  - Playout thinks next show starts at 11:00 UTC, but show is scheduled RIGHT NOW (09:00-11:00 UTC)
+  - Current time (10:11 UTC) falls within scheduled window but playout doesn't recognize it
+- **Database status:**
+  - Schedule entry exists (ID 2485): "Strange How You Move w/ Doum #07" (09:00-11:00 UTC)
+  - File exists on disk: `/srv/media/imported/1/Doum/strange how you move/685e6a54b3ef76e0e25c192b__strange-how-you-move__.mp3`
+  - File registered in LibreTime (ID 944)
+- **Fix applied:**
+  - Manual restart: `cd /srv/libretime && docker compose restart playout liquidsoap`
+  - Stream resumed after restart
+- **Health check issue:**
+  - Health check cron job was **NOT configured** in crontab
+  - Script exists but wasn't running automatically
+  - **Fix:** Added to root crontab:
+    ```bash
+    * * * * * /usr/bin/flock -n /tmp/dia-health.lock /srv/payload/scripts/stream-health-check.sh
+    ```
+  - Also installed `jq` package (required by health check script)
+  - Fixed state file permissions (`/tmp/stream-health-state.json`)
+- **Status:** Fixed – 2025-12-30 (restart + health check now active)
+- **Related:**
+  - Same bug as 2025-12-18 incident (hourly boundary timing)
+  - Documented in `docs/STREAM_HEALTH_MONITORING.md` as Bug #1
+  - Health check should now catch and auto-fix future occurrences
+
 ### 2025-12-18 – Stream delay: 33-minute lag due to LibreTime hourly boundary bug
 - **When:** 2025-12-18 ~13:00-14:33 UTC
 - **Impact:** Stream delayed by 33 minutes, wrong show playing at scheduled time

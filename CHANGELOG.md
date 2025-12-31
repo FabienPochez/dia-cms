@@ -17,6 +17,37 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2025-12-31] - Stream Health Check Fix & Sync Bug Documentation
+
+### Fixed
+- **Stream health check authentication failure** - Fixed incorrect Icecast admin password causing false "OFFLINE" detections
+  - Updated health check script to use correct password: `Wclzap2entCrO3elozblw6SOT` (from environment)
+  - Health check was triggering false restarts every few minutes, causing stream interruptions
+  - Script now correctly authenticates and reads stream status
+  - Location: `scripts/stream-health-check.sh`
+- **LibreTime analytics authentication** - Restarted API/legacy services to apply correct Icecast admin credentials
+  - Config already had correct password, services needed restart to pick it up
+  - Fixes "Please make sure admin user/password is correct" error in listener stats page
+  - Location: `libretime/config.yml` (already correct), restarted `libretime-api-1` and `libretime-legacy-1`
+
+### Added
+- **Stream health check cron job** - Configured automatic health monitoring
+  - Runs every minute via cron: `* * * * * /usr/bin/flock -n /tmp/dia-health.lock /srv/payload/scripts/stream-health-check.sh`
+  - Installed `jq` package (required for JSON parsing)
+  - Fixed state file permissions (`/tmp/stream-health-state.json`)
+- **File exists check cron job** - Configured daily file validation
+  - Runs daily at 3 AM: `0 3 * * * /usr/bin/flock -n /tmp/dia-filecheck.lock /srv/payload/scripts/fix-libretime-file-exists.sh`
+  - Prevents playout errors from missing files
+
+### Documentation
+- **Bug log updates** - Documented two new incidents
+  - 2025-12-31: Payload-LibreTime sync bug (show instance exists but playout entry missing)
+  - 2025-12-30: Stream silent bug (LibreTime timing bug + missing health check)
+  - Merged separate bug report into unified `docs/BUGLOG.md`
+  - Location: `docs/BUGLOG.md`
+
+---
+
 ## [2025-12-30] - Planner "Live" Tab with Live Draft Episode Management
 
 ### Added
