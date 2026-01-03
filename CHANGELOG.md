@@ -17,6 +17,36 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2026-01-03] - Schedule Transition Fix & Skip Logic Improvements
+
+### Fixed
+- **Schedule transition blocking** - Fixed skip logic preventing show transitions at scheduled boundaries
+  - Skip logic was too aggressive, blocking schedule updates when new shows should start
+  - Added check to ensure we don't skip when current show has ended, even if still within scheduled window
+  - Fixed issue where shows would overlap (e.g., 10:00 show continuing to play when 12:00 show should start)
+  - Location: `libretime/patches/player/fetch.py` (skip logic in `_handle_feed_response`)
+  - Skip logic now requires: same row_id AND same start time AND within time window AND current show hasn't ended
+
+- **Show transition timing** - Improved deterministic feed skip logic to allow proper show transitions
+  - Previously, skip logic would match old show even when new show should have started
+  - Now checks both start time match AND that current show hasn't passed its end time
+  - Prevents schedule from getting stuck on previous show when transition time arrives
+  - Ensures smooth transitions between scheduled shows without manual restarts
+
+### Changed
+- **Skip logic conditions** - Enhanced skip logic to prevent false matches during show transitions
+  - Added `current_first_item.end` check to ensure we don't skip when show has ended
+  - Skip only occurs when: row_id matches, start times match, within time window, AND show hasn't ended
+  - Prevents schedule updates from being blocked when new shows should start
+
+### Technical Details
+- Skip logic in `fetch.py` now checks: `current_first_item.end is None or now_utc <= current_first_item.end`
+- This ensures that even if we're technically within a show's scheduled window, we don't skip if the show has actually ended
+- Fix addresses issue where 10:00 Paris time show continued playing when 12:00 Paris time show should have started
+- Manual playout restart was required to fix immediate issue; fix prevents recurrence
+
+---
+
 ## [2026-01-02] - SoundCloud Upload Script (Work in Progress)
 
 ### Added
