@@ -19,6 +19,14 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ## [2026-01-03] - Schedule Transition Fix & Skip Logic Improvements
 
+### Changed
+- **Archive tab duration filter** - Relaxed episode duration filtering to allow episodes that can be shortened to fit slots
+  - Episodes >= a standard slot (30/60/90/120/180+ min) can now be shortened to fit → ALLOW (e.g., 70min → 60min slot)
+  - Episodes exactly 1 minute short can be filled easily → ALLOW (e.g., 59min → 60min slot)
+  - Episodes more than 1 minute short of any slot are still rejected (e.g., 55min needs 5min filling → REJECT)
+  - Fixes issue where 70-minute episodes weren't appearing in archive tab
+  - Location: `src/admin/hooks/useUnscheduledEpisodes.ts` (duration slot filter logic)
+
 ### Fixed
 - **Schedule transition blocking** - Fixed skip logic preventing show transitions at scheduled boundaries
   - Skip logic was too aggressive, blocking schedule updates when new shows should start

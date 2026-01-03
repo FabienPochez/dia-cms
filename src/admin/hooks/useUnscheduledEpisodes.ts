@@ -113,46 +113,48 @@ export const useUnscheduledEpisodes = ({
       const transformedEpisodes: UnscheduledEpisode[] = data.docs
         .filter((episode: any) => isLtReady(episode)) // Client-side safety check
         .filter((episode: any) => {
-          // Duration slot filter: only allow 30, 60, 90, 120, or 180+ minute episodes
-          // Excludes: 55, 75, 110, 175, etc.
+          // Duration slot filter: allow episodes that can fit into standard slots
+          // Standard slots: 30, 60, 90, 120, 180+ minutes
+          // Strategy:
+          // - Episodes >= a slot can be shortened to fit → ALLOW (e.g., 70min → 60min slot)
+          // - Episodes exactly 1min short can be filled easily → ALLOW (e.g., 59min → 60min slot)
+          // - Episodes more than 1min short need significant filling → REJECT (e.g., 55min needs 5min filling for 60min slot)
           const actualDurationMinutes = Math.round((episode.realDuration || 0) / 60)
-          const roundedDuration = episode.roundedDuration
 
-          if (!roundedDuration) return true // Keep if no rounded duration set
+          // If no duration data, keep the episode (let it through)
+          if (!actualDurationMinutes) return true
 
-          // Step 1: Check if roundedDuration is an allowed slot size
-          const isAllowedSlot =
-            roundedDuration === 30 ||
-            roundedDuration === 60 ||
-            roundedDuration === 90 ||
-            roundedDuration === 120 ||
-            roundedDuration >= 180
+          // Standard slot sizes (in ascending order)
+          const standardSlots = [30, 60, 90, 120, 180]
 
-          if (!isAllowedSlot) {
-            console.log(
-              `⏭️  Excluding invalid slot size: "${episode.title}" (roundedDuration=${roundedDuration}min - only 30/60/90/120/180+ allowed)`,
-            )
-            return false
+          // Check if episode can fit into any standard slot
+          // An episode fits if:
+          // 1. It's >= the slot (can be shortened to fit), OR
+          // 2. It's exactly 1 minute short (can fill easily)
+          // We check from largest to smallest to find the best fit
+          for (let i = standardSlots.length - 1; i >= 0; i--) {
+            const slot = standardSlots[i]
+            if (actualDurationMinutes >= slot) {
+              // Episode is >= slot size, can be shortened to fit → ALLOW
+              return true
+            } else if (actualDurationMinutes === slot - 1) {
+              // Episode is exactly 1 minute short, can fill easily → ALLOW
+              return true
+            }
           }
 
-          // Step 2: Quality check - actualDuration must be >= (roundedDuration - 1)
-          // Only for 30 and 60 minute slots (longer slots can be manually cut in planner)
-          let minRequired: number | null = null
-          if (roundedDuration === 30) {
-            minRequired = 29
-          } else if (roundedDuration === 60) {
-            minRequired = 59
-          }
-          // For 90, 120, 180+ minute slots: no quality check (can be manually adjusted)
-
-          if (minRequired !== null && actualDurationMinutes < minRequired) {
-            console.log(
-              `⏭️  Excluding short episode: "${episode.title}" (${actualDurationMinutes}min < ${minRequired}min required for ${roundedDuration}min slot)`,
-            )
-            return false
+          // Also check if episode is >= 180 (fits into 180+ slot, can be shortened)
+          if (actualDurationMinutes >= 180) {
+            return true
           }
 
-          return true
+          // Episode doesn't fit any slot - find the closest slot to explain why it's rejected
+          const closestSlot = standardSlots.find((slot) => actualDurationMinutes < slot) || 180
+          const gap = closestSlot - actualDurationMinutes
+          console.log(
+            `⏭️  Excluding episode that needs filling: "${episode.title}" (${actualDurationMinutes}min - needs ${gap}min filling for ${closestSlot}min slot)`,
+          )
+          return false
         })
         .map((episode: any) => ({
           episodeId: episode.id,
