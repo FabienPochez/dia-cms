@@ -17,6 +17,28 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2026-01-02] - SoundCloud Upload Script (Work in Progress)
+
+### Added
+- **SoundCloud Upload Script** - New script to automatically upload episodes to SoundCloud
+  - Script: `scripts/upload-episodes-soundcloud.ts`
+  - Queries Payload for eligible episodes (aired, firstAiredAt set, track_id null, has libretimeFilepathRelative)
+  - Uploads audio files and cover images to SoundCloud
+  - Updates Payload with track_id, soundcloud URL, and scPermalink
+  - Supports `--id <episodeId>` flag for single episode testing
+  - Includes mandatory duplicate guardrail (never uploads if track_id already set)
+  - OAuth token management with automatic refresh
+  - Track title format: "Episode Title DDMMYY" (falls back to show title)
+
+### Technical Details
+- Uses SoundCloud OAuth 2.0 token stored in `.cache/soundcloud-oauth.json`
+- Token refresh handled automatically when expired
+- Cover image selection: episode cover → show cover fallback
+- URL cleaning: removes query parameters from SoundCloud permalink URLs
+- Authentication: Uses PAYLOAD_INBOX_API_KEY (or PAYLOAD_API_KEY fallback) for Payload updates
+
+---
+
 ## [2025-12-31] - Stream Health Check Fix & Sync Bug Documentation
 
 ### Fixed

@@ -58,6 +58,9 @@ scripts/sh/archive/bench/logs/
 # Local package manager caches
 .pnpm-store/
 
+# OAuth tokens and secrets cache
+.cache/
+
 # Environment snapshots
 .env.backup
 

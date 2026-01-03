@@ -119,6 +119,7 @@ services:
     user: "1000:1000"  # Non-root user (node user)
     volumes:
       - .:/app:ro  # Read-only repository mount
+      - ./.cache:/app/.cache:rw  # Read-write cache directory (OAuth tokens, etc.)
       - /srv/media:/srv/media:rw  # Read-write media access
       # SECURITY: Mount only the specific SSH key needed for rsync (not entire .ssh directory)
       # Mount to /home/node/.ssh/ (node user's home in node:18-alpine, uid 1000)
