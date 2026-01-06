@@ -17,6 +17,22 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2026-01-06] - Episode Slug Duplicate Constraint Fix
+
+### Fixed
+- **Episode slug duplicate constraint errors** - Fixed issue where staff members couldn't save episode information due to duplicate slug validation errors
+  - Root cause: Slug generation hook created duplicate slugs when multiple episodes shared the same title and episode number
+  - Solution: Implemented duplicate detection and resolution in slug generation hook:
+    1. Generate base slug from title + episode number
+    2. Check database for existing slug with same value
+    3. If duplicate found, append `firstAiredAt` date in MMDDYY format (e.g., `-080126`)
+    4. If still duplicate, fall back to numeric suffix (e.g., `-2`, `-3`)
+  - Benefits: Clean slugs when no conflict exists; date suffix only added when needed to resolve duplicates
+  - Location: `src/collections/Episodes.ts` (beforeChange hook)
+  - Impact: Resolves "Value must be unique" errors when saving episodes, allowing staff to successfully update episode information
+
+---
+
 ## [2026-01-06] - Deterministic Feed Duration Tracking, Live Draft Fix & SoundCloud Improvements
 
 ### Fixed

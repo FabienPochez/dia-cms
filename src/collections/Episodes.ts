@@ -898,8 +898,8 @@ const Episodes: CollectionConfig = {
         return data
       },
 
-      // Auto-generate slug from title + episode number (standard format)
-      ({ data, id, originalDoc, operation, context }) => {
+      // Auto-generate slug from title + episode number (add date only if duplicate detected)
+      async ({ data, id, originalDoc, operation, context, req }) => {
         // Skip slug regeneration if maintenance script requests it
         if (context?.skipSlugRegeneration && operation === 'update') {
           return data
@@ -937,11 +937,146 @@ const Episodes: CollectionConfig = {
           }
 
           if (parts.length > 0) {
+            // Generate base slug without date
             const raw = parts.join(' ')
-            data.slug = slugify(raw, {
+            let baseSlug = slugify(raw, {
               lower: true,
               strict: true,
             })
+
+            // Check if slug already exists (excluding current document if updating)
+            if (req?.payload) {
+              const whereClause: any = {
+                slug: {
+                  equals: baseSlug,
+                },
+              }
+
+              // Exclude current document if updating
+              if (operation === 'update' && (id || originalDoc?.id)) {
+                const currentId = id || originalDoc.id
+                whereClause.id = {
+                  not_equals: currentId,
+                }
+              }
+
+              const existing = await req.payload.find({
+                collection: 'episodes',
+                where: whereClause,
+                limit: 1,
+              })
+
+              // If duplicate found, add date suffix from firstAiredAt
+              if (existing.docs.length > 0) {
+                const firstAiredAt = data.firstAiredAt || originalDoc?.firstAiredAt
+                if (firstAiredAt) {
+                  try {
+                    const date = new Date(firstAiredAt)
+                    if (!isNaN(date.getTime())) {
+                      const month = String(date.getMonth() + 1).padStart(2, '0') // 1-12 -> 01-12
+                      const day = String(date.getDate()).padStart(2, '0') // 1-31 -> 01-31
+                      const year = String(date.getFullYear()).slice(-2) // 2026 -> 26
+                      const dateSuffix = `${month}${day}${year}`
+                      baseSlug = `${baseSlug}-${dateSuffix}`
+
+                      // Check again if slug with date is still duplicate
+                      const whereWithDate: any = {
+                        slug: {
+                          equals: baseSlug,
+                        },
+                      }
+                      if (operation === 'update' && (id || originalDoc?.id)) {
+                        const currentId = id || originalDoc.id
+                        whereWithDate.id = {
+                          not_equals: currentId,
+                        }
+                      }
+
+                      const existingWithDate = await req.payload.find({
+                        collection: 'episodes',
+                        where: whereWithDate,
+                        limit: 1,
+                      })
+
+                      // If still duplicate, add numeric suffix
+                      if (existingWithDate.docs.length > 0) {
+                        let counter = 2
+                        let finalSlug = `${baseSlug}-${counter}`
+                        let stillDuplicate = true
+
+                        while (stillDuplicate && counter < 100) {
+                          const whereWithCounter: any = {
+                            slug: {
+                              equals: finalSlug,
+                            },
+                          }
+                          if (operation === 'update' && (id || originalDoc?.id)) {
+                            const currentId = id || originalDoc.id
+                            whereWithCounter.id = {
+                              not_equals: currentId,
+                            }
+                          }
+
+                          const existingWithCounter = await req.payload.find({
+                            collection: 'episodes',
+                            where: whereWithCounter,
+                            limit: 1,
+                          })
+
+                          if (existingWithCounter.docs.length === 0) {
+                            stillDuplicate = false
+                          } else {
+                            counter++
+                            finalSlug = `${baseSlug}-${counter}`
+                          }
+                        }
+
+                        baseSlug = finalSlug
+                      }
+                    }
+                  } catch (e) {
+                    // If date parsing fails, skip adding date to slug
+                    console.warn('[EPISODE_SLUG] Failed to parse firstAiredAt:', firstAiredAt, e)
+                  }
+                } else {
+                  // No firstAiredAt available, use numeric suffix
+                  let counter = 2
+                  let finalSlug = `${baseSlug}-${counter}`
+                  let stillDuplicate = true
+
+                  while (stillDuplicate && counter < 100) {
+                    const whereWithCounter: any = {
+                      slug: {
+                        equals: finalSlug,
+                      },
+                    }
+                    if (operation === 'update' && (id || originalDoc?.id)) {
+                      const currentId = id || originalDoc.id
+                      whereWithCounter.id = {
+                        not_equals: currentId,
+                      }
+                    }
+
+                    const existingWithCounter = await req.payload.find({
+                      collection: 'episodes',
+                      where: whereWithCounter,
+                      limit: 1,
+                    })
+
+                    if (existingWithCounter.docs.length === 0) {
+                      stillDuplicate = false
+                    } else {
+                      counter++
+                      finalSlug = `${baseSlug}-${counter}`
+                    }
+                  }
+
+                  baseSlug = finalSlug
+                }
+              }
+            }
+
+            data.slug = baseSlug
           }
         }
 
