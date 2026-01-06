@@ -100,6 +100,7 @@ interface CachedTechMetadata {
   codec: string
   sampleRate: number
   formatName: string | null
+  duration: number // Track file duration in seconds
 }
 
 interface CachedMetadataEntry extends CachedTechMetadata {
@@ -170,6 +171,7 @@ interface FfprobeResult {
   codec: string
   sampleRate: number
   formatName: string | null
+  duration: number // Track file duration in seconds
 }
 
 async function getAudioTechMetadata(filePath: string): Promise<FfprobeResult> {
@@ -191,11 +193,14 @@ async function getAudioTechMetadata(filePath: string): Promise<FfprobeResult> {
     const sampleRateRaw = audioStream.sample_rate
     const sampleRate = sampleRateRaw ? Number.parseInt(sampleRateRaw, 10) : 0
     const formatName = typeof data.format?.format_name === 'string' ? data.format.format_name : null
+    const durationRaw = data.format?.duration
+    const duration = durationRaw ? Math.round(parseFloat(String(durationRaw))) : 0
 
     return {
       codec,
       sampleRate: Number.isFinite(sampleRate) ? sampleRate : 0,
       formatName,
+      duration: Number.isFinite(duration) && duration > 0 ? duration : 0,
     }
   } catch (error) {
     console.error('[DETERMINISTIC_FEED] ffprobe failed:', error)
@@ -212,6 +217,7 @@ async function getTechMetadata(filePath: string, stats: Stats): Promise<CachedTe
       codec: cached.codec,
       sampleRate: cached.sampleRate,
       formatName: cached.formatName,
+      duration: cached.duration,
     }
   }
 
@@ -226,6 +232,7 @@ async function getTechMetadata(filePath: string, stats: Stats): Promise<CachedTe
     codec: ffprobe.codec,
     sampleRate: ffprobe.sampleRate,
     formatName: ffprobe.formatName,
+    duration: ffprobe.duration,
     createdAt: Date.now(),
   }
 
@@ -244,6 +251,7 @@ async function getTechMetadata(filePath: string, stats: Stats): Promise<CachedTe
     codec: ffprobe.codec,
     sampleRate: ffprobe.sampleRate,
     formatName: ffprobe.formatName,
+    duration: ffprobe.duration,
   }
 }
 
@@ -443,13 +451,17 @@ async function buildFeedItems(
       continue
     }
 
-    // Always set cue_in_sec to 0 to prevent Liquidsoap from restarting files
-    // when feed updates during playback. Changing cue_in_sec for currently playing
-    // shows causes Liquidsoap to restart the file from the new cue_in position,
-    // leading to early cue-outs and playback interruptions.
-    // The start_utc/end_utc timestamps are sufficient for playout to identify
-    // which show should be playing now.
+    // Calculate cue_in_sec for shows that have already started (late starts)
+    // to keep the schedule on track. This will be adjusted after sorting to
+    // only apply to the first item (currently playing show).
+    // For now, set to 0 - we'll calculate it after sorting.
     const cueInSec = 0
+
+    // Calculate cue_out_sec: use minimum of track file duration and scheduled duration
+    // This ensures hard-timed boundaries - tracks are cut at scheduled end time
+    // even if the file is longer than the scheduled slot
+    const trackFileDurationSec = tech.duration > 0 ? tech.duration : durationSec
+    const cueOutSec = Math.min(trackFileDurationSec, durationSec)
 
     const item: DeterministicFeedItem = {
       id: String(trackId),
@@ -468,7 +480,7 @@ async function buildFeedItems(
       fade_in_ms: 1000,
       fade_out_ms: 1000,
       cue_in_sec: cueInSec,
-      cue_out_sec: durationSec,
+      cue_out_sec: cueOutSec,
       track_title: trackTitle,
       artist_name: show?.subtitle || null,
       show_name: showName,
@@ -487,6 +499,20 @@ async function buildFeedItems(
   items.sort((a, b) => a.startMs - b.startMs)
 
   const limited = items.slice(0, maxItems)
+
+  // Calculate cue_in_sec for the first item only (currently playing or next show)
+  // if it has already started. This keeps the schedule on track for late starts
+  // without restarting shows that are already playing correctly.
+  if (limited.length > 0) {
+    const firstItem = limited[0]
+    const firstStartMs = firstItem.startMs
+    const firstEndMs = firstItem.endMs
+    if (firstStartMs < nowMs && nowMs < firstEndMs) {
+      // First show has already started - calculate elapsed time for cue_in
+      const elapsedSec = Math.floor((nowMs - firstStartMs) / 1000)
+      firstItem.item.cue_in_sec = Math.max(0, elapsedSec)
+    }
+  }
 
   const earliestStartMs = limited.length ? limited[0].startMs : Number.POSITIVE_INFINITY
   const latestEndMs = limited.length ? limited[limited.length - 1].endMs : Number.NEGATIVE_INFINITY

@@ -53,6 +53,8 @@ See [Email Setup Guide](./docs/EMAIL_TRANSACTIONAL_QUICKSTART.md) for configurat
 
 ### Import Script Usage
 
+#### Single Episode Import
+
 ```bash
 # Auto-detect episode ID from staging directory (recommended)
 npm run import:one -- --ingest=cli
@@ -62,6 +64,41 @@ npm run import:one -- --episodeId=686d115dd9c5ee507e7c9355 --ingest=cli
 ```
 
 The script automatically detects MP3 files in `/srv/media/staging` and extracts episode IDs from filenames using the pattern `<episodeId>__<rest>.mp3`.
+
+#### Inbox Hydration (Host-Uploaded Episodes)
+
+The inbox hydration script automatically imports host-uploaded audio files from `/srv/media/new` into LibreTime and hydrates corresponding Payload episodes.
+
+**What it does:**
+- Scans `/srv/media/new` for `*.mp3` files with `{episodeId}__...` filename pattern
+- Fetches eligible episodes from Payload (criteria: `pendingReview=false`, `airStatus=draft`, missing LibreTime fields)
+- Uploads files to LibreTime via HTTP API
+- Polls LibreTime until file analysis completes
+- Updates Payload episodes with `libretimeTrackId`, `libretimeFilepathRelative`, and sets `airStatus='queued'`
+- Idempotent and safe to run repeatedly (skips files already in LibreTime)
+
+**Usage:**
+```bash
+# Run inbox hydration (default: scans /srv/media/new)
+docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-inbox-lt.ts'
+
+# Custom inbox directory
+docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-inbox-lt.ts --inbox=/path/to/inbox'
+
+# Dry-run mode (no actual changes)
+docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-inbox-lt.ts --dry-run'
+
+# Custom polling settings
+docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-inbox-lt.ts --poll-seconds=60 --timeout-seconds=1800'
+```
+
+**Environment Variables:**
+- `PAYLOAD_INBOX_API_KEY`: Dedicated API key for inbox hydration (preferred)
+- `PAYLOAD_API_KEY`: Fallback API key if `PAYLOAD_INBOX_API_KEY` is not set
+- `PAYLOAD_ADMIN_TOKEN`: JWT token (highest priority if set)
+- `MEDIA_NEW_DIR`: Inbox directory path (default: `/srv/media/new`)
+
+**See also:** [CHANGELOG.md](./CHANGELOG.md#2025-12-19---inbox-hydration-script-implementation) for detailed implementation notes.
 
 3. `pnpm install && pnpm dev` to install dependencies and start the dev server
 4. open `http://localhost:3000` to open the app in your browser

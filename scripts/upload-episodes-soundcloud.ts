@@ -242,31 +242,70 @@ async function getValidAccessToken(): Promise<string> {
 }
 
 /**
- * Format date for track title (DDMMYY format for permalink-friendly title)
+ * Format date for display (DD.MM.YY format)
  */
-function formatDateForPermalink(date: string | Date): string {
+function formatDateForDisplay(date: string | Date): string {
   const d = new Date(date)
   const day = String(d.getDate()).padStart(2, '0')
   const month = String(d.getMonth() + 1).padStart(2, '0')
   const year = String(d.getFullYear()).slice(-2) // Last 2 digits
-  return `${day}${month}${year}` // DDMMYY format (no dots, no separators)
+  return `${day}.${month}.${year}`
 }
 
 /**
- * Build track title: Episode Title + Date (DDMMYY)
+ * Slugify string: lowercase, ASCII, hyphens
+ */
+function slugify(str: string): string {
+  return str
+    .normalize('NFD') // Decompose accents
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-') // Replace non-alphanum with dash
+    .replace(/(^-|-$)/g, '') // Trim leading/trailing dashes
+}
+
+/**
+ * Build track title: Episode Title + Date (DD.MM.YY format)
  * Falls back to Show Title + Date if episode title is not available
- * This format ensures SoundCloud generates permalink like "episode-title-031125"
  */
 function buildTrackTitle(episode: Episode): string {
-  // Use firstAiredAt if available, fallback to publishedAt for testing
-  const dateSource = episode.firstAiredAt || episode.publishedAt
-  const dateStr = dateSource ? formatDateForPermalink(dateSource) : null
+  if (!episode.firstAiredAt) {
+    throw new Error('firstAiredAt is required to build track title')
+  }
+  
+  const dateStr = formatDateForDisplay(episode.firstAiredAt)
   
   // Use episode title first, fallback to show title
   const show = typeof episode.show === 'object' ? episode.show : null
   const title = episode.title || show?.title || 'Untitled'
   
-  return dateStr ? `${title} ${dateStr}` : title
+  return `${title} (${dateStr})`
+}
+
+/**
+ * Generate SoundCloud permalink slug: Show Title (DD.MM.YY) -> slugified
+ * Always uses show title (not episode title) for consistent permalinks
+ * Capped at 80 characters to keep it neat
+ */
+function generateSoundCloudPermalink(episode: Episode): string {
+  if (!episode.firstAiredAt) {
+    throw new Error('firstAiredAt is required to generate permalink')
+  }
+  
+  const dateStr = formatDateForDisplay(episode.firstAiredAt)
+  
+  // Always use show title for permalink (not episode title)
+  const show = typeof episode.show === 'object' ? episode.show : null
+  const showTitle = show?.title || episode.title || 'Untitled'
+  
+  // Format: "Show Title (DD.MM.YY)"
+  const base = `${showTitle} (${dateStr})`
+  
+  // Slugify: lowercase, ASCII, hyphens
+  const slug = slugify(base)
+  
+  // Cap at 80 characters
+  return slug.length > 80 ? slug.substring(0, 80) : slug
 }
 
 /**
@@ -384,6 +423,10 @@ async function uploadToSoundCloud(
   const trackTitle = buildTrackTitle(episode)
   form.append('track[title]', trackTitle)
   
+  // Generate and set custom permalink slug
+  const permalinkSlug = generateSoundCloudPermalink(episode)
+  form.append('track[permalink]', permalinkSlug)
+  
   // Build description
   const description = episode.description || 
     (typeof episode.show === 'object' ? episode.show?.description || '' : '')
@@ -471,18 +514,15 @@ async function processEpisode(episodeId: string, accessToken: string): Promise<b
       process.exit(1)
     }
     
-    // Validate other criteria (TEMPORARY: bypassed in --id mode for testing)
+    // Validate other criteria
     if (episode.airStatus !== 'aired') {
-      console.log(`   ⚠️  Warning: airStatus is '${episode.airStatus}' (expected 'aired') - proceeding for testing`)
-    }
-    
-    // TEMPORARY: Allow testing without firstAiredAt in --id mode (use publishedAt as fallback)
-    if (!episode.firstAiredAt && !episode.publishedAt) {
-      console.log(`   ⏭️  Skipping: firstAiredAt and publishedAt are not set`)
+      console.log(`   ⏭️  Skipping: airStatus is '${episode.airStatus}' (expected 'aired')`)
       return false
     }
-    if (!episode.firstAiredAt && episode.publishedAt) {
-      console.log(`   ⚠️  Warning: firstAiredAt not set, using publishedAt for date: ${episode.publishedAt}`)
+    
+    if (!episode.firstAiredAt) {
+      console.log(`   ⏭️  Skipping: firstAiredAt is not set`)
+      return false
     }
     
     if (!episode.libretimeFilepathRelative) {
@@ -514,9 +554,10 @@ async function processEpisode(episodeId: string, accessToken: string): Promise<b
     
     console.log(`   ✅ Upload successful!`)
     console.log(`   Track ID: ${scResponse.id}`)
-    console.log(`   URL: ${scResponse.permalink_url}`)
+    console.log(`   Permalink: ${scResponse.permalink || '(not in response)'}`)
+    console.log(`   Permalink URL: ${scResponse.permalink_url}`)
     
-    // Clean URL and update Payload
+    // Use the permalink_url from response (SoundCloud may adjust the slug, e.g., append -1 on duplicates)
     const cleanUrl = cleanSoundCloudUrl(scResponse.permalink_url)
     console.log(`   💾 Updating Payload...`)
     await updatePayloadEpisode(episode.id, scResponse.id, cleanUrl)

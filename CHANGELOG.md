@@ -17,6 +17,48 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2026-01-06] - Deterministic Feed Duration Tracking, Live Draft Fix & SoundCloud Improvements
+
+### Fixed
+- **Deterministic feed cue-out calculation** - Calculate `cue_out_sec` based on minimum of track file duration and scheduled duration to prevent tracks from playing past scheduled end time
+  - Added `duration` field to `CachedTechMetadata` and `FfprobeResult` interfaces
+  - Extract duration from ffprobe format.duration field
+  - Location: `src/lib/schedule/deterministicFeed.ts`
+
+- **Live Draft episode show ID matching** - Fixed issue where Live Draft episodes could be incorrectly reused across different shows
+  - Extract show ID from search results (handles both string and object formats)
+  - Validate show ID matches requested show before reusing episode
+  - Enhanced logging for debugging episode reuse decisions
+  - Location: `src/admin/components/PlannerViewWithLibreTime.tsx`
+
+### Changed
+- **SoundCloud track title formatting** - Improved track titles and permalink generation
+  - Track titles now use format: "Episode Title (DD.MM.YY)" instead of "Title DDMMYY"
+  - Generate custom permalink slugs using show title (not episode title) for consistency
+  - Permalinks are slugified (lowercase, ASCII, hyphens) and capped at 80 characters
+  - Location: `scripts/upload-episodes-soundcloud.ts`
+
+### Added
+- **Inbox hydration documentation** - Added comprehensive documentation for inbox hydration script usage
+  - Usage examples, environment variables, and configuration options
+  - Location: `README.md`
+
+- **Debug and utility scripts** - Added scripts for troubleshooting and maintenance
+  - `scripts/check-duplicates.ts` - Check for duplicate files in LibreTime
+  - `scripts/check-track-episode.ts` - Look up track information by search term
+  - `scripts/investigate-track-title.ts` - Investigate track title issues
+  - `scripts/update-legacy-firstAiredAt.ts` - Utility to update legacy episode firstAiredAt fields
+
+### Documentation
+- Added bug reports for inbox hydration issues (duplicate files, track title problems)
+  - Location: `docs/BUGLOG.md`
+- Added deterministic feed audit and verification documentation (2026-01-03)
+  - Location: `docs/DETERMINISTIC_FEED_AUDIT_2026-01-03.md`, `docs/DETERMINISTIC_FEED_VERIFICATION_2026-01-03.md`
+- Added event disappearance instrumentation and queue handoff reviewer pack documentation
+  - Location: `docs/EVENT_DISAPPEARANCE_INSTRUMENTATION_REVIEWER_PACK.md`, `docs/QUEUE_HANDOFF_FIX_REVIEWER_PACK.md`
+
+---
+
 ## [2026-01-06] - Stream Health Check Unknown Title Debouncing & Audio Health Gating
 
 ### Fixed

@@ -685,30 +685,32 @@ const PlannerViewWithLibreTime: React.FC = () => {
         // Step 1: Look for existing Live Draft episode for this show
         // Criteria: isLive=true, no media (not from upload form), draft/scheduled, not yet aired
         console.log('[PLANNER] Looking for existing Live Draft episode for show:', showId)
+        const searchQuery = {
+          and: [
+            { show: { equals: showId } },
+            { isLive: { equals: true } },
+            {
+              or: [
+                { airStatus: { equals: 'draft' } },
+                { airStatus: { equals: 'scheduled' } },
+              ],
+            },
+            { firstAiredAt: { exists: false } },
+            // Exclude episodes with media (upload form episodes have media)
+            { media: { exists: false } },
+            // Exclude episodes with LibreTime track ID (upload form episodes have this)
+            { libretimeTrackId: { exists: false } },
+            // Ensure it's a draft (not submitted from upload form)
+            { publishedStatus: { equals: 'draft' } },
+            // Ensure it's not pending review (upload form episodes have this)
+            { pendingReview: { equals: false } },
+          ],
+        }
         const searchParams = new URLSearchParams({
-          where: JSON.stringify({
-            and: [
-              { show: { equals: showId } },
-              { isLive: { equals: true } },
-              {
-                or: [
-                  { airStatus: { equals: 'draft' } },
-                  { airStatus: { equals: 'scheduled' } },
-                ],
-              },
-              { firstAiredAt: { exists: false } },
-              // Exclude episodes with media (upload form episodes have media)
-              { media: { exists: false } },
-              // Exclude episodes with LibreTime track ID (upload form episodes have this)
-              { libretimeTrackId: { exists: false } },
-              // Ensure it's a draft (not submitted from upload form)
-              { publishedStatus: { equals: 'draft' } },
-              // Ensure it's not pending review (upload form episodes have this)
-              { pendingReview: { equals: false } },
-            ],
-          }),
+          where: JSON.stringify(searchQuery),
           limit: '1',
         })
+        console.log('[PLANNER] Search query:', JSON.stringify(searchQuery, null, 2))
         const searchResponse = await fetch(`/api/episodes?${searchParams.toString()}`, {
           method: 'GET',
           credentials: 'include',
@@ -727,7 +729,17 @@ const PlannerViewWithLibreTime: React.FC = () => {
           const candidateEpisode = searchData.docs[0]
           const candidateId = candidateEpisode.id
           
-          console.log('[PLANNER] Found potential Live Draft episode, validating:', candidateId)
+          // Extract show ID from search result (could be string or object)
+          const candidateShowId = typeof candidateEpisode.show === 'string'
+            ? candidateEpisode.show
+            : candidateEpisode.show?.id || candidateEpisode.show
+          
+          console.log('[PLANNER] Found potential Live Draft episode, validating:', {
+            candidateId,
+            requestedShowId: showId,
+            candidateShowId: candidateShowId,
+            showMatches: candidateShowId === showId,
+          })
           
           // Fetch full episode data to validate
           const validateResponse = await fetch(`/api/episodes/${candidateId}`, {
@@ -741,8 +753,14 @@ const PlannerViewWithLibreTime: React.FC = () => {
           } else {
             const episodeData = await validateResponse.json()
             
-            // Validate it's a true Live Draft episode (not from upload form)
+            // Extract show ID from episode (could be string or object with id)
+            const episodeShowId = typeof episodeData.show === 'string' 
+              ? episodeData.show 
+              : episodeData.show?.id || episodeData.show
+            
+            // Validate it's a true Live Draft episode for the correct show (not from upload form)
             const isValidLiveDraft =
+              episodeShowId === showId && // CRITICAL: Must match the requested show
               episodeData.isLive === true &&
               !episodeData.media &&
               !episodeData.libretimeTrackId &&
@@ -753,9 +771,12 @@ const PlannerViewWithLibreTime: React.FC = () => {
             if (isValidLiveDraft) {
               // Valid Live Draft episode - reuse it
               targetEpisodeId = candidateId
-              console.log('[PLANNER] Validated Live Draft episode, reusing:', targetEpisodeId)
+              console.log('[PLANNER] Validated Live Draft episode, reusing:', targetEpisodeId, 'for show:', showId)
             } else {
-              console.log('[PLANNER] Candidate episode failed validation (not a true Live Draft), will create new one:', {
+              console.log('[PLANNER] Candidate episode failed validation, will create new one:', {
+                requestedShowId: showId,
+                episodeShowId: episodeShowId,
+                showMatches: episodeShowId === showId,
                 isLive: episodeData.isLive,
                 hasMedia: !!episodeData.media,
                 hasLibretimeTrackId: !!episodeData.libretimeTrackId,
@@ -769,23 +790,52 @@ const PlannerViewWithLibreTime: React.FC = () => {
         
         if (!targetEpisodeId) {
           // No valid Live Draft episode found - create new one
+          // First, fetch the show to get its hosts
+          console.log('[PLANNER] No existing Live Draft episode found, fetching show data for hosts')
+          const showResponse = await fetch(`/api/shows/${showId}?depth=2`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          })
+
+          let showHosts: string[] = []
+          if (showResponse.ok) {
+            const showData = await showResponse.json()
+            // Extract host IDs (could be strings or objects with id)
+            if (showData.hosts && Array.isArray(showData.hosts)) {
+              showHosts = showData.hosts.map((h: any) => 
+                typeof h === 'string' ? h : h.id || h
+              ).filter((id: any) => id) // Filter out any null/undefined
+            }
+            console.log('[PLANNER] Fetched show hosts:', showHosts)
+          } else {
+            console.warn('[PLANNER] Failed to fetch show data for hosts, creating episode without hosts')
+          }
+
           // Create new Live Draft episode
-          console.log('[PLANNER] No existing Live Draft episode found, creating new one')
+          console.log('[PLANNER] Creating new Live Draft episode')
+          const createPayload: any = {
+            show: showId,
+            title: title || 'Live Episode',
+            publishedStatus: 'draft',
+            airStatus: 'draft', // Will be set to 'scheduled' by scheduling logic
+            isLive: true,
+            pendingReview: false,
+            publishedAt: start.toISOString(), // Required field
+          }
+
+          // Add hosts if available
+          if (showHosts.length > 0) {
+            createPayload.hosts = showHosts
+          }
+
           const createResponse = await fetch('/api/episodes', {
             method: 'POST',
             credentials: 'include',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              show: showId,
-              title: title || 'Live Episode',
-              publishedStatus: 'draft',
-              airStatus: 'draft', // Will be set to 'scheduled' by scheduling logic
-              isLive: true,
-              pendingReview: false,
-              publishedAt: start.toISOString(), // Required field
-            }),
+            body: JSON.stringify(createPayload),
           })
 
           if (!createResponse.ok) {

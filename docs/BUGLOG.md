@@ -1,5 +1,60 @@
 ## Bug Log
 
+### 2026-01-02 – Inbox hydration: Duplicate files created in LibreTime due to UUID suffix collision handling
+- **When:** 2026-01-02 ~12:00 UTC (during inbox hydration script run)
+- **Impact:** Medium – duplicate files created in LibreTime for same episode, causing confusion and wasted storage
+- **Symptoms:**
+  - Episode `6943bf9b4a3a130aafe0b6bc` ("Karpatxoa Katedrala") has 2 files in LibreTime:
+    - `6943bf9b4a3a130aafe0b6bc__dia-karpatxoa-kathedra.mp3` (ID: 2076)
+    - `6943bf9b4a3a130aafe0b6bc__dia-karpatxoa-kathedra_dbfd16dd-9d79-48a2-8bef-6483fe66e19d.mp3` (ID: 2079)
+  - Episode `68fb64f7ae3456e6cc4a322e` ("Gros Volume Sur La Molle w/ Chach") has 2 files in LibreTime:
+    - `68fb64f7ae3456e6cc4a322e__gros-volume-sur-la-mol.mp3` (ID: 2077)
+    - `68fb64f7ae3456e6cc4a322e__gros-volume-sur-la-mol_16ebfd72-fe15-4b3b-b349-8bba331cd733.mp3` (ID: 2078)
+  - Second file in each pair has UUID suffix added by LibreTime
+- **Root cause:**
+  - Script checks for existing files using episode ID prefix search (`findLibreTimeFileByPrefix`)
+  - If a file with the same episode ID prefix exists but with a different exact filename, the check may find it
+  - However, when uploading, LibreTime detects a filename collision and automatically adds a UUID suffix
+  - This creates a duplicate file even though a file for that episode already exists
+  - The script doesn't check for exact filename matches before uploading
+- **Evidence:**
+  - Both duplicate pairs have same episode ID prefix but different exact filenames
+  - Second file in each pair has UUID suffix (LibreTime's collision handling)
+  - Files were uploaded today (2026-01-02) during inbox hydration run
+- **Fix:**
+  - Script should check for exact filename matches, not just episode ID prefix matches
+  - Or check if ANY file with the episode ID prefix exists and skip upload if found
+  - Need to handle LibreTime's UUID suffix behavior when checking for existing files
+- **Status:** Open – needs investigation and fix
+- **Location:**
+  - `scripts/hydrate-inbox-lt.ts` (findLibreTimeFileByPrefix function, line ~262)
+  - LibreTime file upload collision handling
+
+### 2026-01-02 – Inbox hydration: Track title not set correctly for newly uploaded files
+- **When:** 2026-01-02 ~12:00 UTC (during inbox hydration script run)
+- **Impact:** Low – tracks are correctly linked between Payload and LibreTime, but track titles in LibreTime may be incorrect (e.g., timestamp patterns like "2025-10-28_17h52m48" instead of episode title)
+- **Symptoms:**
+  - Episode `6911e86b354d6d26f4bf20aa` ("Scorpio Season") uploaded to LibreTime today
+  - Track correctly linked: LibreTime Track ID 2074, filepath `imported/1/6911e86b354d6d26f4bf20aa__scorpio-season-nietanc.mp3`
+  - Payload episode has correct title: "Scorpio Season"
+  - LibreTime track has incorrect title: "2025-10-28_17h52m48" (timestamp pattern, likely from filename/metadata)
+- **Root cause (suspected):**
+  - Track title update (`updateLibreTimeTrackName`) may be failing silently during upload
+  - Or track title is being set from file metadata instead of episode title
+  - The `updateLibreTimeTrackName` function is called after upload but may not be working correctly
+- **Evidence:**
+  - Track uploaded today (2026-01-02) via inbox hydration script
+  - Payload episode title is correct: "Scorpio Season"
+  - LibreTime track title is wrong: "2025-10-28_17h52m48"
+  - Track is correctly linked (libretimeTrackId and filepath are set in Payload)
+- **Fix:**
+  - Not critical – tracks are correctly linked and functional
+  - Track titles can be manually corrected in LibreTime if needed
+  - Should investigate why `updateLibreTimeTrackName` isn't working during upload
+- **Status:** Open – low priority, needs investigation
+- **Location:**
+  - `scripts/hydrate-inbox-lt.ts` (uploadFileToLibreTime function, line ~495)
+
 ### 2025-12-31 – Payload-LibreTime sync bug: Show instance exists but playout entry missing
 - **When:** 2025-12-31 ~09:00-10:00 UTC (10:00-11:00 Paris time)
 - **Impact:** Stream stuck in jingle loop, show scheduled in Payload but not playing in LibreTime
@@ -29,6 +84,41 @@
 - **Location:**
   - Payload-LibreTime sync process
   - `src/lib/services/scheduleOperations.ts` (planOne function)
+
+### 2025-12-31 (11:00 UTC) – LibreTime timing bug: Health check restart causes wrong show to play
+
+- **When:** 2025-12-31 11:00-11:36 UTC (12:00-12:36 Paris time)
+- **Severity:** Critical (wrong show playing)
+- **Status:** ⚠️ Recurrence of Bug #1
+- **Impact:** "La Guerre est Terminée" scheduled 11:00-13:00 UTC not playing; "Gros Volume Sur La Molle" (09:00-11:00 UTC) still playing instead
+- **Symptoms:**
+  - Health check restarted playout at 09:25 UTC (11:25 Paris time)
+  - After restart, playout resumed playing "Gros Volume Sur La Molle" (09:00-11:00 UTC)
+  - At 11:00 UTC, playout should have switched to "La Guerre est Terminée" but didn't
+  - Playout logs show: `first_start_utc=2025-12-31T13:00:00Z` (waiting for 13:00 UTC)
+  - Current time (11:36 UTC) falls within scheduled window (11:00-13:00 UTC) but playout doesn't recognize it
+  - Playout says: `Need to add items to Liquidsoap *now*: {2492}` (correct show ID) but then waits for 13:00 UTC
+- **Root cause:**
+  - **LibreTime Bug #1**: Hourly boundary timing detection failure (same as 2025-12-30 and 2025-12-18)
+  - Health check restart triggered at 09:25 UTC, causing playout to resume previous show
+  - At 11:00 UTC boundary, playout failed to recognize current time falls within scheduled show window
+  - Playout calculates "next show" incorrectly and waits for wrong time
+- **Database status:**
+  - Schedule entry exists (ID 2492): "La Guerre est Terminée #02" (11:00-13:00 UTC)
+  - File exists and registered in LibreTime (ID 953)
+  - Query confirms: `should_be_playing = true` (current time within window)
+- **Fix applied:**
+  - Manual restart of playout at 11:36 UTC
+  - **Note:** Even after restart, playout still shows `first_start_utc=2025-12-31T13:00:00Z` and waits for 13:00 UTC
+  - This suggests the bug persists even after restart in some cases
+- **Prevention:**
+  - Health check should be more careful about when it restarts playout
+  - Consider adding logic to detect if restart causes schedule desync
+  - May need to add manual intervention when health check detects this pattern
+- **Status:** Open – recurrence of Bug #1, needs investigation into why restart doesn't always fix it
+- **Related:**
+  - Same bug as 2025-12-30 and 2025-12-18 incidents
+  - Health check may be contributing to the problem by restarting at inopportune times
 
 ### 2025-12-30 – Stream silent: LibreTime hourly boundary timing bug + missing health check
 - **When:** 2025-12-30, 10:05-10:13 UTC (11:05-11:13 Paris time)
