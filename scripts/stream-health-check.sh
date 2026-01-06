@@ -10,7 +10,7 @@ ICECAST_PASS="${ICECAST_ADMIN_PASSWORD:-Wclzap2entCrO3elozblw6SOT}"
 STATE_FILE="/tmp/stream-health-state.json"
 LOG_FILE="/var/log/dia-cron/stream-health.log"
 RESTART_THRESHOLD=60
-DETERMINISTIC_FEED_URL_DEFAULT="https://content.diaradio.live/api/schedule/deterministic?lookahead=120&maxItems=8"
+DETERMINISTIC_FEED_URL_DEFAULT="http://localhost:3000/api/schedule/deterministic?lookahead=120&maxItems=8"
 FEED_URL="${DETERMINISTIC_FEED_URL:-$DETERMINISTIC_FEED_URL_DEFAULT}"
 DETERMINISTIC_FEED_AUTHORIZATION=${DETERMINISTIC_FEED_AUTHORIZATION:-}
 DETERMINISTIC_FEED_TOKEN=${DETERMINISTIC_FEED_TOKEN:-}

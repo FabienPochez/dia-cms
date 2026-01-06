@@ -59,9 +59,18 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
-## [2026-01-06] - Stream Health Check Unknown Title Debouncing & Audio Health Gating
+## [2026-01-06] - Stream Health Check Unknown Title Debouncing & Internal Docker Network Feed Access
 
 ### Fixed
+- **Deterministic feed fetch via Cloudflare** - Fixed issue where stream-health-check was accessing deterministic feed through external Cloudflare-protected URL, causing Cloudflare JavaScript challenges to block curl requests
+  - Root cause: Health check script used `https://content.diaradio.live/api/schedule/deterministic` which goes through Cloudflare Bot Management, blocking curl requests with JavaScript challenges
+  - Solution: Changed default URL to use internal Docker network: `http://localhost:3000/api/schedule/deterministic`
+  - Both `libretime-playout-1` and `payload-payload-1` are on `dia_internal` network, and Payload is exposed on host port 3000
+  - Benefits: No Cloudflare challenges, faster (no external network), more reliable (no external dependency)
+  - Location: `scripts/stream-health-check.sh` (DETERMINISTIC_FEED_URL_DEFAULT)
+  - Verified: Health check now successfully fetches feed with `x-feed-status: ok` headers, no more "Deterministic feed fetch failed" warnings
+  - Impact: Health check can now properly compare feed schedule with actual playback for better desync detection
+
 - **Unknown title false-positive restarts** - Fixed issue where stream-health-check triggered restarts on transient "Unknown" titles even when audio was playing correctly
   - Root cause: Health check treated any "Unknown" title as CRITICAL and triggered immediate restart after cooldown, causing false-positive restarts (e.g., at 22:58 UTC on 2026-01-05)
   - Solution: Implemented debouncing and audio health gating:
