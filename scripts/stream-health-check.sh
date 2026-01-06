@@ -59,6 +59,50 @@ get_icecast_bytes() {
         grep -oP "(?<=<total_bytes_read>)[^<]+" || echo "0"
 }
 
+get_icecast_stats() {
+    local stats_xml
+    stats_xml=$(curl -s -u "$ICECAST_USER:$ICECAST_PASS" "$ICECAST_URL" 2>&1)
+    local listeners=0
+    local bytes_in=0
+    local bytes_out=0
+    
+    if [ -n "$stats_xml" ]; then
+        listeners=$(echo "$stats_xml" | grep -oP "(?<=<listeners>)[^<]+" | head -1 || echo "0")
+        bytes_in=$(echo "$stats_xml" | grep -oP "(?<=<total_bytes_sent>)[^<]+" | head -1 || echo "0")
+        bytes_out=$(echo "$stats_xml" | grep -oP "(?<=<total_bytes_read>)[^<]+" | head -1 || echo "0")
+    fi
+    
+    echo "$listeners|$bytes_in|$bytes_out"
+}
+
+get_liquidsoap_now_playing() {
+    docker exec libretime-playout-1 python3 << 'PYEOF' 2>/dev/null || echo "error|error|error"
+import sys
+import os
+sys.path.insert(0, '/src')
+try:
+    from libretime_playout.player.liquidsoap import TelnetLiquidsoap
+    
+    class MinimalClient:
+        def __init__(self):
+            self.host = os.getenv('LIQUIDSOAP_HOST', 'liquidsoap')
+            self.port = int(os.getenv('LIQUIDSOAP_PORT', '1234'))
+            self.socket_path = os.getenv('LIQUIDSOAP_SOCKET', '')
+    
+    client = MinimalClient()
+    telnet = TelnetLiquidsoap(client, [0, 1, 2, 3, 4])
+    result = telnet.get_now_playing()
+    
+    row_id = str(result.get('actual_row_id', 'none'))
+    title = result.get('actual_title', 'none') or 'none'
+    ok = 'true' if result.get('ok', False) else 'false'
+    
+    print(f"{row_id}|{title}|{ok}")
+except Exception as e:
+    print(f"error|error|error")
+PYEOF
+}
+
 get_current_track_duration() {
     docker exec -i libretime-postgres-1 psql -U libretime -d libretime -t -c \
         "SELECT EXTRACT(EPOCH FROM f.length) FROM cc_schedule s JOIN cc_files f ON s.file_id = f.id WHERE s.starts <= NOW() AND s.ends > NOW() LIMIT 1;" 2>/dev/null | \
@@ -215,6 +259,8 @@ PREV_FEED_MISSING_COUNT=0
 PREV_FEED_TOTAL_COUNT=0
 PREV_FEED_LAST_OK_VERSION=""
 PREV_ICECAST_TITLE=""
+PREV_UNKNOWN_START_TS="0"
+PREV_UNKNOWN_CONSECUTIVE_COUNT=0
 
 if [ -f "$STATE_FILE" ]; then
     PREV_MISMATCH_START=$(jq -r '.mismatch_start // "null"' "$STATE_FILE")
@@ -236,6 +282,8 @@ if [ -f "$STATE_FILE" ]; then
     PREV_FEED_TOTAL_COUNT=$(jq -r '.feed_total_count // 0' "$STATE_FILE")
     PREV_FEED_LAST_OK_VERSION=$(jq -r '.feed_last_ok_version // ""' "$STATE_FILE")
     PREV_ICECAST_TITLE=$(jq -r '.icecast_title // ""' "$STATE_FILE")
+    PREV_UNKNOWN_START_TS=$(jq -r '.unknown_start_ts // "0"' "$STATE_FILE")
+    PREV_UNKNOWN_CONSECUTIVE_COUNT=$(jq -r '.unknown_consecutive_count // 0' "$STATE_FILE")
 fi
 
 FEED_VERSION="$PREV_FEED_VERSION"
@@ -491,14 +539,65 @@ if [ -n "$FEED_FIRST_END_TS" ] && [[ "$FEED_FIRST_END_TS" =~ ^[0-9]+$ ]] && [ "$
     fi
 fi
 
-# Critical title states that should never be suppressed
+# Critical title states - with debouncing and audio health check
 ICECAST_TITLE_UPPER=$(echo "$ICECAST_TITLE" | tr '[:lower:]' '[:upper:]')
 CRITICAL_TITLE=false
+UNKNOWN_TITLE=false
+UNKNOWN_START_TS="$PREV_UNKNOWN_START_TS"
+UNKNOWN_CONSECUTIVE_COUNT="$PREV_UNKNOWN_CONSECUTIVE_COUNT"
+AUDIO_HEALTHY=true
+
+# Detect Unknown/Offline/empty title
 if [ "$ICECAST_TITLE_UPPER" = "UNKNOWN" ] || [ "$ICECAST_TITLE_UPPER" = "OFFLINE" ] || [ -z "$ICECAST_TITLE" ] || [ "$ICECAST_TITLE" = "" ]; then
-    CRITICAL_TITLE=true
-    if [ "$PREV_MISMATCH_START" = "null" ] || [ "$ICECAST_TITLE" != "$PREV_ICECAST_TITLE" ]; then
-        log "${RED}🚨 CRITICAL: Icecast title is '${ICECAST_TITLE}' (critical state detected)${NC}"
+    UNKNOWN_TITLE=true
+    
+    # Track consecutive Unknown checks
+    if [ "$ICECAST_TITLE" != "$PREV_ICECAST_TITLE" ] || [ "$PREV_UNKNOWN_START_TS" = "0" ]; then
+        # Unknown just started or changed
+        UNKNOWN_START_TS=$NOW_TS
+        UNKNOWN_CONSECUTIVE_COUNT=1
+    else
+        # Unknown continues
+        UNKNOWN_CONSECUTIVE_COUNT=$((PREV_UNKNOWN_CONSECUTIVE_COUNT + 1))
     fi
+    
+    # Check audio health: bytes must be increasing
+    if [ "$ICECAST_BYTES" -le "$PREV_BYTES" ] && [ "$ICECAST_BYTES" != "0" ]; then
+        AUDIO_HEALTHY=false
+    fi
+    
+    # Get context for logging
+    LIQ_NOW_PLAYING=$(get_liquidsoap_now_playing)
+    IFS='|' read -r LIQ_ROW_ID LIQ_TITLE LIQ_OK <<< "$LIQ_NOW_PLAYING"
+    
+    ICE_STATS=$(get_icecast_stats)
+    IFS='|' read -r ICE_LISTENERS ICE_BYTES_IN ICE_BYTES_OUT <<< "$ICE_STATS"
+    
+    UNKNOWN_DURATION=0
+    if [ "$UNKNOWN_START_TS" != "0" ]; then
+        UNKNOWN_DURATION=$((NOW_TS - UNKNOWN_START_TS))
+    fi
+    
+    # Log context when Unknown is detected
+    log "${YELLOW}⚠️  Unknown title detected: consecutive=${UNKNOWN_CONSECUTIVE_COUNT} duration=${UNKNOWN_DURATION}s audio_healthy=${AUDIO_HEALTHY}${NC}"
+    log "  Context: expected_row_id=${FEED_FIRST_ID} expected_title='${FEED_FIRST_TITLE}'"
+    log "  Liquidsoap: row_id=${LIQ_ROW_ID} title='${LIQ_TITLE}' ok=${LIQ_OK}"
+    log "  Icecast: listeners=${ICE_LISTENERS} bytes_in=${ICE_BYTES_IN} bytes_out=${ICE_BYTES_OUT} prev_bytes=${PREV_BYTES} curr_bytes=${ICECAST_BYTES}"
+    
+    # Only treat as CRITICAL if:
+    # 1. Unknown persists for >2 minutes (120s) AND
+    # 2. Audio is not healthy (bytes not increasing)
+    if [ "$UNKNOWN_DURATION" -ge 120 ] && [ "$AUDIO_HEALTHY" = false ]; then
+        CRITICAL_TITLE=true
+        log "${RED}🚨 CRITICAL: Unknown title + no audio for ${UNKNOWN_DURATION}s (triggering restart)${NC}"
+    fi
+else
+    # Title is normal - reset Unknown tracking
+    if [ "$PREV_UNKNOWN_START_TS" != "0" ]; then
+        log "${GREEN}✅ Title recovered: was Unknown for ${PREV_UNKNOWN_CONSECUTIVE_COUNT} checks${NC}"
+    fi
+    UNKNOWN_START_TS="0"
+    UNKNOWN_CONSECUTIVE_COUNT=0
 fi
 PREV_ICECAST_TITLE="$ICECAST_TITLE"
 
@@ -596,10 +695,47 @@ if [ "$MISMATCH" = true ] || [ "$FROZEN" = true ]; then
             else
                 RESTART_REASON=$(IFS=','; echo "${RESTART_REASON_LIST[*]}")
                 log "${RED}🚨 CRITICAL: Triggering restart (reason=${RESTART_REASON})${NC}"
+                
+                # Graceful shutdown: stop playback before restart to avoid screeching
+                log "Stopping Liquidsoap playback gracefully..."
+                docker exec libretime-playout-1 python3 << 'PYEOF' 2>/dev/null || true
+import sys
+sys.path.insert(0, '/src')
+from libretime_playout.liquidsoap.client._connection import LiquidsoapConnection
+import os
+
+host = os.getenv("LIQUIDSOAP_HOST", "liquidsoap")
+port = int(os.getenv("LIQUIDSOAP_PORT", "1234"))
+
+try:
+    conn = LiquidsoapConnection(host=host, port=port, path=None, timeout=2)
+    conn.connect()
+    
+    # Clear all queues gracefully
+    for queue_id in range(5):
+        conn.write(f"dummy.{queue_id}.stop")
+        conn.read()
+    
+    # Stop main output
+    conn.write("dummy.stop")
+    conn.read()
+    
+    conn.close()
+except Exception:
+    pass  # Ignore errors during shutdown
+PYEOF
+                
+                # Wait for fade-out (2 seconds should be enough for fade)
+                sleep 2
+                
+                # Now restart containers
                 cd /srv/libretime && docker compose restart playout liquidsoap >> "$LOG_FILE" 2>&1
                 log "${GREEN}✅ Restart completed (reason=${RESTART_REASON})${NC}"
                 MISMATCH_START="null"
                 PREV_LAST_RESTART_TS=$NOW_TS
+                # Reset Unknown tracking after restart
+                UNKNOWN_START_TS="0"
+                UNKNOWN_CONSECUTIVE_COUNT=0
             fi
         elif [ "$SHOULD_RESTART" = true ] && [ "$RESTARTS_ENABLED" != "true" ]; then
             log "${YELLOW}⚠️  Restart conditions met (restarts disabled) reasons=${RESTART_REASON_LIST[*]}${NC}"
@@ -774,6 +910,8 @@ cat <<EOF > "$STATE_FILE"
   "feed_total_count": $FEED_TOTAL_COUNT_JSON,
   "feed_last_ok_version": $FEED_LAST_OK_VERSION_JSON,
   "currently_playing_track_id": $CURRENTLY_PLAYING_TRACK_ID_JSON,
-  "track_id_mismatch": $TRACK_ID_MISMATCH_JSON
+  "track_id_mismatch": $TRACK_ID_MISMATCH_JSON,
+  "unknown_start_ts": "$UNKNOWN_START_TS",
+  "unknown_consecutive_count": $UNKNOWN_CONSECUTIVE_COUNT
 }
 EOF

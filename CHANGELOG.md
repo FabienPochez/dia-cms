@@ -17,6 +17,168 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2026-01-06] - Stream Health Check Unknown Title Debouncing & Audio Health Gating
+
+### Fixed
+- **Unknown title false-positive restarts** - Fixed issue where stream-health-check triggered restarts on transient "Unknown" titles even when audio was playing correctly
+  - Root cause: Health check treated any "Unknown" title as CRITICAL and triggered immediate restart after cooldown, causing false-positive restarts (e.g., at 22:58 UTC on 2026-01-05)
+  - Solution: Implemented debouncing and audio health gating:
+    1. **Debouncing**: Track consecutive "Unknown" checks and duration via state file (`unknown_start_ts`, `unknown_consecutive_count`)
+    2. **Audio health check**: Verify bytes are actually increasing before treating as critical
+    3. **New policy**: Unknown alone = WARN (logged with context, no restart); Unknown + no audio for >2 min = CRITICAL restart
+    4. **Enhanced logging**: When Unknown detected, logs expected row_id/title, Liquidsoap now_playing status, Icecast listener/bytes stats
+  - Location: `scripts/stream-health-check.sh`
+  - Functions added:
+    - `get_icecast_stats()`: Extracts listeners, bytes_in, bytes_out from Icecast admin XML
+    - `get_liquidsoap_now_playing()`: Calls `TelnetLiquidsoap.get_now_playing()` from playout container to get actual row_id/title
+  - State persistence: Unknown tracking saved to `/tmp/stream-health-state.json` (`unknown_start_ts`, `unknown_consecutive_count`)
+  - Reset logic: Unknown counters reset after restart or when title recovers
+  - Impact: Prevents false-positive restarts from transient metadata glitches; only restarts when both title is Unknown AND audio is actually stalled
+  - Verified: At 22:58 UTC on 2026-01-05, health check detected "Unknown" but stream was playing correctly (row_id=2576); new logic would log WARN with context instead of restarting
+
+### Technical Details
+- **Debouncing**: Unknown must persist for >2 minutes (120s) AND audio must be unhealthy (bytes not increasing) before triggering restart
+- **Context logging format**: When Unknown detected, logs:
+  - `⚠️  Unknown title detected: consecutive=N duration=Ns audio_healthy=true|false`
+  - `Context: expected_row_id=... expected_title='...'`
+  - `Liquidsoap: row_id=... title='...' ok=true|false`
+  - `Icecast: listeners=... bytes_in=... bytes_out=... prev_bytes=... curr_bytes=...`
+- **Recovery logging**: When title recovers, logs `✅ Title recovered: was Unknown for N checks`
+- **State file fields**: Added `unknown_start_ts` (timestamp when Unknown started) and `unknown_consecutive_count` (number of consecutive Unknown checks)
+
+---
+
+## [2026-01-05] - Liquidsoap Now Playing Inspection, Expected Sourcing Fix & Playback Instrumentation
+
+### Added
+- **Liquidsoap "now playing" inspection (read-only phase)** - Added observability to compare expected vs actual playback state
+  - Implemented `get_now_playing()` method in `TelnetLiquidsoap` class to query Liquidsoap for current track metadata
+  - Uses `request.metadata <queue_id>` command via `LiquidsoapConnection` API with 0.5s timeout to avoid blocking
+  - Scans all queues (0-4) and prioritizes scheduled tracks (with `schedule_table_id`) over jingles
+  - Extracts `schedule_table_id` (row_id) and `title` from Liquidsoap metadata response
+  - Added hourly boundary checker in `queue.py` that logs `[HOUR_CHECK]` once per hour in HH:00:00-20 window
+  - Compares expected row_id (from schedule) vs actual row_id (from Liquidsoap) to detect desyncs
+  - Read-only phase: all checks log `action=none` - no playback changes made
+  - Guard mechanism (`last_logged_hour`) ensures only one log per hour, preventing spam
+  - Location: `libretime/patches/player/liquidsoap.py` (get_now_playing method), `libretime/patches/queue.py` (hourly boundary check)
+  - Documentation: `/srv/libretime/docs/HOUR_CHECK_EXPECTED_SOURCING_FIX_REVIEWER_PACK.md`
+
+- **Playback actuation trace instrumentation** - Added comprehensive instrumentation to trace track playback failures
+  - **PLAY_REQUEST**: Logs correlation_id, row_id, path, file_type, cue_in/out, expected start/end when `play()` is called
+  - **FILE_READINESS**: Logs file_ready check result, wait duration, iterations; ERROR if timeout (file not ready after 200s)
+  - **TELNET_COMMANDS**: Logs exact Liquidsoap commands sent (queue_push with annotation preview) and success/error status
+  - **POST_PLAY_VERIFICATION**: After 300ms delay, verifies track actually started by calling `get_now_playing()` and comparing actual_row_id
+  - Correlation ID format: `{row_id}_{timestamp_ms}` flows through all instrumentation logs for traceability
+  - Removed silent failures: all error paths now log ERROR with correlation_id; file readiness timeout now ERROR+return instead of WARN+skip
+  - Location: `libretime/patches/player/liquidsoap.py` (`play()`, `handle_file_type()`, `queue_push()` methods)
+  - Enables precise failure diagnosis: identifies whether failures are file readiness, telnet command, or playback verification issues
+
+### Technical Details
+- **Connection**: Uses `LiquidsoapConnection` API (not direct conn access) following established wrapper pattern
+- **Timeout**: 0.5s timeout prevents blocking main scheduling loop
+- **Metadata Format**: Parses `key="value"` pairs from `request.metadata <queue_id>` response using regex
+- **Queue Scanning**: Iterates through queues 0-4, prioritizes scheduled tracks (with `schedule_table_id`) over jingles
+- **Error Handling**: Graceful degradation - connection failures return `ok=False` with error type in `raw` field
+- **HOUR_CHECK Log Format**: `[HOUR_CHECK] now_utc=... expected_row_id=... expected_source=state|deque|none actual_row_id=... actual_type=scheduled|jingle|unknown actual_title="..." ok=... raw="..." desync_seconds=... action=none`
+- **Instrumentation Log Format**: 
+  - `[PLAY_REQUEST] correlation_id=... row_id=... path=... file_type=... cue_in=... cue_out=... expected_start=... expected_end=...`
+  - `[FILE_READINESS] correlation_id=... row_id=... path=... status=ready|timeout wait_seconds=... iterations=... reason=...`
+  - `[TELNET_COMMANDS] correlation_id=... row_id=... queue_id=... command=queue_push annotation_preview="..." status=success|error`
+  - `[POST_PLAY_VERIFICATION] correlation_id=... row_id=... status=success|failed actual_row_id=... actual_title="..."`
+- **Next Phase**: After validation period, Strategy B will add enforcement (hard stops/switches) based on desync detection
+- **Docker Mount**: Added volume mount in `docker-compose.yml` for `liquidsoap.py` patch
+
+### Fixed
+- **HOUR_CHECK expected_row_id sourcing** - Fixed issue where `HOUR_CHECK` reported `expected_row_id=None` even when `SWITCH_REQUIRED` correctly detected expected track
+  - Root cause: `HOUR_CHECK` derived expected only from `schedule_deque`, which is a consumable structure that gets popped during playback
+  - At 13:00:00, `SWITCH_REQUIRED` detected `expected=2574` correctly, but 86ms later `HOUR_CHECK` found `schedule_deque` empty → `expected_row_id=None`
+  - Solution: Introduced persistent state variables (`expected_now_row_id`, `expected_now_start_utc`, `expected_now_end_utc`) in `PypoLiqQueue` class
+  - State is updated whenever `SWITCH_REQUIRED` computes expected (priority: `scheduled_now[0]` if exists, else `media_item`)
+  - `HOUR_CHECK` now uses `expected_now_row_id` as primary source with fallback to `schedule_deque` peek
+  - Added `expected_source=state|deque|none` and `actual_type=scheduled|jingle|unknown` fields to `HOUR_CHECK` log
+  - Location: `libretime/patches/queue.py` (state variables in `__init__`, state update in `SWITCH_REQUIRED` section, `HOUR_CHECK` logic)
+  - Verified: At 18:00:00 transition, `HOUR_CHECK` correctly showed `expected_row_id=2591 expected_source=state` instead of `none`
+
+- **get_now_playing() jingle vs scheduled track detection** - Fixed issue where `get_now_playing()` returned jingle instead of scheduled track when both were playing
+  - Root cause: Method stopped at first queue with `status="playing"`, which was often queue 0 (jingle) instead of queue 4 (scheduled track)
+  - Solution: Check all queues (0-4) and prioritize scheduled tracks (with `schedule_table_id`) over jingles
+  - If scheduled track found, use it; otherwise fallback to jingle if found
+  - Location: `libretime/patches/player/liquidsoap.py` (`get_now_playing()` method)
+  - Verified: Now correctly identifies scheduled track (row_id=2575) instead of jingle when both are playing
+
+- **queue_clear_all() hard stop fix** - Fixed issue where `queue_clear_all()` removed queue items but didn't stop playback, causing old tracks to continue playing alongside new tracks
+  - Root cause: `queue_clear_all()` only called `queues_remove()` which removes items from queues but doesn't stop active playback
+  - This caused transitions to fail: old track (e.g., row_id=2591 "Marcello") continued playing on queues 1 and 4 while new track (row_id=2592) started on queue 3, resulting in multiple shows playing simultaneously
+  - Solution: Updated `queue_clear_all()` to implement proper hard stop semantics:
+    1. Stop playback first: sends `dummy.N.stop` command to each queue (0-4) via LiquidsoapConnection
+    2. Wait 200ms for stop commands to take effect
+    3. Then clear queue items: calls `queues_remove()` to remove items
+    4. Optional verification: checks if any queue still reports `status="playing"` and logs warning if so
+  - Location: `libretime/patches/player/liquidsoap.py` (`queue_clear_all()` method in `TelnetLiquidsoap` class)
+  - Impact: Ensures clean transitions at hour boundaries - old tracks are actually stopped before new tracks start
+  - Verified: At 19:00 UTC transition, Marcello (row_id=2591) was still playing on queues 1 and 4 after `queue_clear_all()`; fix ensures all queues stop before clearing
+
+- **File readiness check at transitions** - Fixed issue where files were skipped at scheduled boundaries due to `file_ready=False`
+  - Root cause: `fetch.py` always set `file_ready=False` and relied on `file.py` thread to mark files as ready
+  - `file.py` thread didn't process files within 5-second timeout, causing files to be skipped
+  - This caused transitions to fail (e.g., "Sancerre Rouge" skipped at 09:00 UTC, previous show continued playing)
+  - Solution: Added immediate file existence check in `_build_file_event()` method
+  - If file exists on disk (`/srv/media/`), set `file_ready=True` immediately
+  - This avoids waiting for `file.py` thread and prevents files from being skipped
+  - Location: `libretime/patches/player/fetch.py` (`_build_file_event` method)
+  - Files are now checked on disk and marked ready immediately when they exist
+  - Restores behavior documented in forensics report where files showed `file_ready=True` before boundaries
+
+### Technical Details (File Readiness)
+- **Previous behavior**: All files set to `file_ready=False`, waited up to 5 seconds for `file.py` thread to process
+- **Issue**: `file.py` thread didn't process files quickly enough, causing `liquidsoap.handle_file_type()` to skip files
+- **New behavior**: Check file existence on disk immediately in `_build_file_event()`
+- If file exists at `/srv/media/{uri}`, set `file_ready=True` immediately
+- If file doesn't exist, set `file_ready=False` and let `file.py` thread handle it (download/copy)
+- Fix verified: Bootstrap logs now show `file_ready=True` for all existing files
+- Transition at 11:00 UTC (12:00 Paris) confirmed working after fix applied
+
+---
+
+## [2026-01-04] - Liquidsoap Track Switching Fix & Hard-Timed Boundaries
+
+### Fixed
+- **Liquidsoap track switching at boundaries** - Fixed issue where tracks were queued but not switching at scheduled boundaries
+  - Root cause: Liquidsoap uses a queue system that doesn't interrupt currently playing tracks
+  - When `queue_push()` was called, new tracks were queued but old tracks continued playing
+  - Initial solution: Use `verify_correct_present_media()` instead of direct `play()` for track switches
+  - Improved solution: Always use `verify_correct_present_media()` when scheduled events exist, regardless of queue tracker state
+  - `verify_correct_present_media()` stops old tracks and starts new ones, ensuring proper switching
+  - Location: `libretime/patches/queue.py` (Empty exception handler)
+  - Added `SWITCH_REQUIRED` logging with reason, expected, current, and action for debugging
+  - Direct `play()` now only used for truly empty state (no scheduled events)
+
+- **Hard-timed boundaries enforcement** - Ensured tracks are cut at scheduled end time even if file is longer
+  - Updated `cue_out_sec` calculation to use `min(track_file_duration, scheduled_duration)`
+  - Extracts track file duration from ffprobe metadata
+  - Ensures shows end exactly at scheduled time, even if track has remaining content
+  - Critical for maintaining tight schedule: if show scheduled 14:00-16:00, it MUST end at 16:00
+  - Location: `src/lib/schedule/deterministicFeed.ts` (buildFeedItems function)
+  - Added duration extraction to `getAudioTechMetadata()` and `CachedTechMetadata` interface
+
+### Technical Details
+- **Initial implementation**: Detected track switches by comparing current playing track with expected track
+- **Issue found**: Queue tracker may not reflect actual playing state, causing false "initial/empty" detection
+- **Improved implementation**: Simplified logic - always use `verify_correct_present_media()` when `scheduled_now` has events
+- Builds `scheduled_now` list of events that should be playing (started but not ended)
+- Calls `verify_correct_present_media()` which:
+  - Stops tracks that shouldn't be playing
+  - Starts tracks that should be playing
+  - Ensures proper switching instead of just queuing
+- Fix addresses issue where shows like "Xingar Morning" continued playing when "Croisières Parallèles" should have started at 09:00 UTC
+- Also fixes issue where "Summer Mega Mix" continued playing when "Voila l'Topo" should have started at 14:00 UTC
+- Previous behavior: tracks queued but stream didn't switch until previous track ended
+- New behavior: tracks switch immediately at scheduled boundaries, verified on every transition
+- **Hard boundaries**: `cue_out_sec` now enforces scheduled end time, cutting tracks even if file is longer than slot
+
+---
+
+
 ## [2026-01-03] - Schedule Transition Fix & Skip Logic Improvements
 
 ### Changed
