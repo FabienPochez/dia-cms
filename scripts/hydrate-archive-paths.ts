@@ -60,14 +60,17 @@ interface LibreTimeFile {
 }
 
 // Configuration
-const PAYLOAD_API_URL = process.env.PAYLOAD_API_URL || 'https://content.diaradio.live'
+// Use PAYLOAD_URL (internal Docker URL) when available, fallback to PAYLOAD_API_URL, then public URL
+const PAYLOAD_API_URL = process.env.PAYLOAD_URL || process.env.PAYLOAD_API_URL || 'https://content.diaradio.live'
 const PAYLOAD_API_KEY = process.env.PAYLOAD_API_KEY
+const PAYLOAD_ADMIN_TOKEN = process.env.PAYLOAD_ADMIN_TOKEN
+const PAYLOAD_INBOX_API_KEY = process.env.PAYLOAD_INBOX_API_KEY // Primary key for archive hydration
 const LIBRETIME_API_URL = process.env.LIBRETIME_API_URL || 'http://api:9001'
 const LIBRETIME_API_KEY = process.env.LIBRETIME_API_KEY
 const LIBRETIME_LIBRARY_ROOT = process.env.LIBRETIME_LIBRARY_ROOT || '/srv/media'
 
-if (!PAYLOAD_API_KEY) {
-  console.error('❌ PAYLOAD_API_KEY environment variable is required')
+if (!PAYLOAD_API_KEY && !PAYLOAD_INBOX_API_KEY && !PAYLOAD_ADMIN_TOKEN) {
+  console.error('❌ PAYLOAD_API_KEY, PAYLOAD_INBOX_API_KEY, or PAYLOAD_ADMIN_TOKEN environment variable is required')
   process.exit(1)
 }
 
@@ -77,12 +80,40 @@ if (!LIBRETIME_API_KEY) {
 }
 
 // Helper functions
-function buildPayloadAuthHeaders() {
+/**
+ * Build Payload authentication headers
+ * Authentication priority: PAYLOAD_ADMIN_TOKEN (JWT) > PAYLOAD_INBOX_API_KEY > PAYLOAD_API_KEY (fallback)
+ * Pattern from: scripts/upload-episodes-soundcloud.ts, scripts/hydrate-inbox-lt.ts
+ */
+function buildPayloadAuthHeaders(): { Authorization: string; 'Content-Type': 'application/json' } {
   const PAYLOAD_AUTH_SLUG = process.env.PAYLOAD_AUTH_SLUG || 'users'
-  return {
-    Authorization: `${PAYLOAD_AUTH_SLUG} API-Key ${PAYLOAD_API_KEY}`,
-    'Content-Type': 'application/json',
+  
+  // Prefer PAYLOAD_ADMIN_TOKEN (JWT Bearer) over API key for update operations
+  if (PAYLOAD_ADMIN_TOKEN) {
+    return {
+      Authorization: `Bearer ${PAYLOAD_ADMIN_TOKEN}`,
+      'Content-Type': 'application/json',
+    }
   }
+  
+  // Prefer PAYLOAD_INBOX_API_KEY (dedicated key for automation scripts)
+  if (PAYLOAD_INBOX_API_KEY) {
+    return {
+      Authorization: `${PAYLOAD_AUTH_SLUG} API-Key ${PAYLOAD_INBOX_API_KEY}`,
+      'Content-Type': 'application/json',
+    }
+  }
+  
+  // Fallback to PAYLOAD_API_KEY
+  if (PAYLOAD_API_KEY) {
+    console.log('⚠️  Using PAYLOAD_API_KEY for authentication. Consider using PAYLOAD_INBOX_API_KEY for archive hydration.')
+    return {
+      Authorization: `${PAYLOAD_AUTH_SLUG} API-Key ${PAYLOAD_API_KEY}`,
+      'Content-Type': 'application/json',
+    }
+  }
+  
+  throw new Error('PAYLOAD_INBOX_API_KEY, PAYLOAD_API_KEY, or PAYLOAD_ADMIN_TOKEN environment variable is required')
 }
 
 function buildLibreTimeHeaders() {
@@ -225,8 +256,11 @@ async function hydrateEpisode(
     }
 
     // Fetch current episode state
-    const getResponse = await axios.get(`${PAYLOAD_API_URL}/api/episodes/${episodeId}`, {
-      headers: buildPayloadAuthHeaders(),
+    const authHeaders = buildPayloadAuthHeaders()
+    const apiUrl = `${PAYLOAD_API_URL}/api/episodes/${episodeId}`
+    
+    const getResponse = await axios.get(apiUrl, {
+      headers: authHeaders,
       timeout: 10000,
     })
 
@@ -328,17 +362,39 @@ async function hydrateEpisode(
       hydratedLibreTime: needsLibreTimeHydration,
     }
   } catch (error: any) {
-    if (error.response?.status === 404) {
+    const statusCode = error.response?.status
+    const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message
+    
+    if (statusCode === 404) {
       return {
         episodeId,
         status: 'failed',
         reason: 'Episode not found in Payload',
       }
     }
+    
+    if (statusCode === 403) {
+      // Enhanced error logging for 403 authentication errors
+      const authHeaders = buildPayloadAuthHeaders()
+      const authType = authHeaders.Authorization.startsWith('Bearer') ? 'JWT Bearer (PAYLOAD_ADMIN_TOKEN)' : 
+                      authHeaders.Authorization.includes(process.env.PAYLOAD_INBOX_API_KEY || '') ? 'API-Key (PAYLOAD_INBOX_API_KEY)' :
+                      authHeaders.Authorization.includes(process.env.PAYLOAD_API_KEY || '') ? 'API-Key (PAYLOAD_API_KEY)' : 'Unknown'
+      console.error(`❌ 403 Forbidden for episode ${episodeId}`)
+      console.error(`   Error: ${errorMessage}`)
+      console.error(`   Authentication type: ${authType}`)
+      console.error(`   API URL: ${PAYLOAD_API_URL}`)
+      console.error(`   Verify: API key user has staff/admin role, or use PAYLOAD_ADMIN_TOKEN`)
+      return {
+        episodeId,
+        status: 'failed',
+        reason: `403 Forbidden: ${errorMessage} (Auth: ${authType})`,
+      }
+    }
+    
     return {
       episodeId,
       status: 'failed',
-      reason: `Error: ${error.message}`,
+      reason: `Error: ${errorMessage}`,
     }
   }
 }

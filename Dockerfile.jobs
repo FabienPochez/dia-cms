@@ -1,3 +1,4 @@
+
 # Dockerfile for jobs service (cron jobs)
 # Extends node:18-alpine with bash, rsync, and openssh-client for rsync operations
 
@@ -5,7 +6,9 @@ FROM node:18-alpine
 
 # Install bash, rsync, and openssh-client (required for rsync_pull.sh)
 # Add postgresql-client so jobs can update LibreTime DB over TCP (no docker CLI/socket)
-RUN apk add --no-cache bash rsync openssh-client postgresql-client
+# Add ffmpeg (includes ffprobe) for audio metadata extraction in inbox hydration
+# Add jq for JSON logging in rsync_postair_weekly.sh
+RUN apk add --no-cache bash rsync openssh-client postgresql-client ffmpeg jq
 
 # Set working directory
 WORKDIR /app

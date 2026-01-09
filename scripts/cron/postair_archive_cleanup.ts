@@ -101,7 +101,10 @@ async function callHydrateArchivePaths(): Promise<boolean> {
     const { stdout, stderr } = await execFileAsync(
       'npx',
       ['tsx', scriptPath, '--log', LOG_FILE],
-      { timeout: 60000 }, // 1 minute timeout
+      { 
+        timeout: 60000, // 1 minute timeout
+        maxBuffer: 10 * 1024 * 1024, // 10MB buffer (for verbose hydration output)
+      },
     )
 
     if (stderr) {

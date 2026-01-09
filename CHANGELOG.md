@@ -38,6 +38,28 @@ This changelog documents all significant changes to the Payload CMS backend serv
   - Location: `src/server/lib/subprocessGlobalDiag.ts`
   - Impact: Post-air archiving script can now execute (requires SSH access to be configured separately)
 
+- **rsync_postair_weekly.sh SSH connection failing in jobs container** - Fixed SSH connectivity issue when script runs inside jobs container
+  - Root cause: Script was using `ssh bx-archive` directly without specifying the mounted SSH key path, and using `~/.ssh/` for ControlPath which may not be writable
+  - Solution: Updated script to match the pattern from `rsync_pull.sh` - detect if `/home/node/.ssh/id_ed25519` exists (jobs container) and use it explicitly, use `/tmp/` for ControlPath instead of `~/.ssh/`
+  - Location: `scripts/sh/archive/rsync_postair_weekly.sh:65-74`
+  - Impact: Script now successfully connects to `bx-archive` from inside the jobs container
+
+- **Missing jq dependency in jobs container** - Fixed "jq: command not found" error in rsync_postair_weekly.sh
+  - Root cause: Script uses `jq` for JSON logging but it wasn't installed in the jobs container image
+  - Solution: Added `jq` to the Dockerfile.jobs package installation
+  - Location: `Dockerfile.jobs:10`
+  - Impact: JSON logging in rsync_postair_weekly.sh now works correctly
+
+- **hydrate-archive-paths.ts 403 authentication errors** - Fixed 403 Forbidden errors when updating Payload episodes with archive paths
+  - Root cause: Script was using `PAYLOAD_API_KEY` with public URL (`https://content.diaradio.live`) instead of using internal Docker URL and proper authentication priority
+  - Solution: 
+    - Updated authentication to use priority: `PAYLOAD_ADMIN_TOKEN` (JWT) > `PAYLOAD_INBOX_API_KEY` > `PAYLOAD_API_KEY` (matching pattern from other scripts)
+    - Changed `PAYLOAD_API_URL` to use `PAYLOAD_URL` (internal Docker URL `http://payload:3000`) when available
+    - Added enhanced error logging for 403 errors
+  - Location: `scripts/hydrate-archive-paths.ts:63-87, 259-345`
+  - Reference: CHANGELOG.md line 626 (similar fix for hydrate-inbox-lt.ts)
+  - Impact: Archive hydration now successfully updates Payload episodes with archive paths after successful rsync transfers
+
 ### Changed
 - **Post-air query criteria** - Expanded query to match episodes with either `publishedStatus: 'published'` or `publishedStatus: 'submitted'`
   - Episodes in `'submitted'` status are now processed after airing

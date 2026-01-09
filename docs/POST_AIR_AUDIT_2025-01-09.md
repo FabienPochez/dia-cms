@@ -146,3 +146,30 @@ Current workflow:
 3. Run post-air script manually if needed
 4. Run SoundCloud upload script for eligible episodes
 5. Create Hetzner archive script for post-SoundCloud archiving
+
+---
+
+## Additional Fixes (2026-01-09)
+
+### 7. SSH Connectivity for rsync_postair_weekly.sh - **FIXED**
+
+**Problem**: The `rsync_postair_weekly.sh` script was failing with "Cannot connect to bx-archive. Check SSH alias configuration" when running inside the jobs container.
+
+**Root Cause**: 
+- The script was using `ssh bx-archive` directly without specifying the mounted SSH key path (`/home/node/.ssh/id_ed25519`)
+- The script was using `~/.ssh/` for ControlPath, which may not be writable in the container
+- Unlike `rsync_pull.sh`, which had been updated to handle jobs container SSH keys, `rsync_postair_weekly.sh` hadn't been updated with the same pattern
+
+**Fix**: 
+- Updated `rsync_postair_weekly.sh` to detect if `/home/node/.ssh/id_ed25519` exists (indicating jobs container) and use it explicitly
+- Changed ControlPath from `~/.ssh/cm-%r@%h:%p` to `/tmp/ssh-cm-%r@%h:%p` for writable location
+- Matched the SSH handling pattern from `rsync_pull.sh` (which was already working)
+- Added `jq` package to `Dockerfile.jobs` (required for JSON logging in the script)
+
+**Location**: 
+- `scripts/sh/archive/rsync_postair_weekly.sh:65-74`
+- `Dockerfile.jobs:10`
+
+**Reference**: See CHANGELOG.md entry "[2026-01-06] - Jobs Container & Rsync Pull SSH" for context on the original jobs container SSH setup.
+
+**Status**: ✅ Fixed - SSH connectivity now works from jobs container (requires rebuilding jobs image: `docker compose build jobs`)

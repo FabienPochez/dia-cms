@@ -38,7 +38,8 @@ const REPEAT_WINDOW_MS = 60000 // 1 minute window for repeat counting
 const KILL_SWITCH_ENABLED = process.env.SUBPROCESS_KILL_SWITCH !== '0' // Default: enabled
 
 // SECURITY: Allowlist of known-safe binaries (default, can be overridden via env)
-const DEFAULT_ALLOWLIST = ['ffprobe', 'ffmpeg', 'psql', 'rsync', 'docker', 'git']
+// npx is allowed for running TypeScript scripts (e.g., hydrate-archive-paths.ts) in jobs container
+const DEFAULT_ALLOWLIST = ['ffprobe', 'ffmpeg', 'psql', 'rsync', 'docker', 'git', 'npx', 'node']
 const ALLOWLIST_OVERRIDE = process.env.SUBPROCESS_ALLOWLIST
   ? process.env.SUBPROCESS_ALLOWLIST.split(',').map((s) => s.trim()).filter(Boolean)
   : null
@@ -127,6 +128,19 @@ function shouldBlockCommand(
           command.includes('scripts/sh/archive/rsync_pull.sh')) {
         // This is an authorized rsync operation - allow it
         return { blocked: false }
+      }
+    }
+    
+    // Check for authorized TypeScript scripts (hydrate-archive-paths.ts)
+    // This script is used by post-air cron job to update Payload with archive paths
+    if (baseCmd === 'npx' && args && args.length > 0) {
+      if (args[0] === 'tsx' && args[1] && args[1].includes('hydrate-archive-paths.ts')) {
+        // Only allow if script is in the authorized location
+        if (args[1].includes('/scripts/hydrate-archive-paths.ts') || 
+            args[1].includes('scripts/hydrate-archive-paths.ts')) {
+          // This is an authorized hydration operation - allow it
+          return { blocked: false }
+        }
       }
     }
   }

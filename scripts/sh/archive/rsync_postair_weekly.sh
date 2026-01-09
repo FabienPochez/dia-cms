@@ -62,13 +62,24 @@ echo "Working file: $WORKING_ABS"
 echo "Remote target: $REMOTE_TARGET"
 echo ""
 
-# Set production SSH defaults (from rsync_one.sh:114)
-export RSYNC_RSH="${RSYNC_RSH:-ssh -p 23 -o Compression=no -o ControlMaster=auto -o ControlPath=~/.ssh/cm-%r@%h:%p -o ControlPersist=60 -c aes128-gcm@openssh.com}"
+# SSH defaults (disable ControlMaster and override ControlPath to writable location)
+# IMPORTANT: This script can run on the host OR inside the `jobs` container.
+# - On host: use normal SSH identity/config (do NOT force a container-only IdentityFile path)
+# - In jobs container: prefer the mounted key at /home/node/.ssh/id_ed25519
+SSH_IDENTITY_OPT=""
+if [[ -f "/home/node/.ssh/id_ed25519" ]]; then
+  SSH_IDENTITY_OPT="-o IdentityFile=/home/node/.ssh/id_ed25519"
+fi
+
+# Use writable ControlPath location (/tmp instead of ~/.ssh)
+SSH_CMD="ssh -p 23 -o Compression=no -o ControlMaster=auto -o ControlPath=/tmp/ssh-cm-%r@%h:%p -o ControlPersist=60 -c aes128-gcm@openssh.com ${SSH_IDENTITY_OPT}"
+export RSYNC_RSH="${RSYNC_RSH:-${SSH_CMD}}"
 
 # Test SSH connectivity
 echo "→ Testing SSH connectivity..."
-if ! ssh bx-archive "pwd" >/dev/null 2>&1; then
+if ! $SSH_CMD bx-archive "pwd" >/dev/null 2>&1; then
     echo "ERROR: Cannot connect to bx-archive. Check SSH alias configuration." >&2
+    echo "   SSH command: $SSH_CMD bx-archive" >&2
     exit 1
 fi
 echo "✅ SSH connection successful"
@@ -76,7 +87,7 @@ echo "✅ SSH connection successful"
 # Create remote directory
 echo "→ Creating remote directory..."
 REMOTE_DIR="$(dirname "$REMOTE_BASE/$DEST_REL")"
-ssh bx-archive "mkdir -p '$REMOTE_DIR'"
+$SSH_CMD bx-archive "mkdir -p '$REMOTE_DIR'"
 echo "✅ Remote directory created/verified: $REMOTE_DIR"
 
 # Check if file already exists with same size
@@ -84,8 +95,8 @@ echo "→ Checking if file already exists..."
 WORKING_SIZE=$(stat -c%s "$WORKING_ABS" 2>/dev/null || echo "0")
 REMOTE_SIZE=""
 
-if ssh bx-archive "test -f '$REMOTE_BASE/$DEST_REL'" 2>/dev/null; then
-    REMOTE_SIZE=$(ssh bx-archive "stat -c%s '$REMOTE_BASE/$DEST_REL'" 2>/dev/null || echo "0")
+if $SSH_CMD bx-archive "test -f '$REMOTE_BASE/$DEST_REL'" 2>/dev/null; then
+    REMOTE_SIZE=$($SSH_CMD bx-archive "stat -c%s '$REMOTE_BASE/$DEST_REL'" 2>/dev/null || echo "0")
     
     if [[ "$WORKING_SIZE" -eq "$REMOTE_SIZE" ]] && [[ "$WORKING_SIZE" -gt 0 ]]; then
         echo "✅ File already exists with same size ($WORKING_SIZE bytes) - skipping"
