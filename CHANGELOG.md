@@ -17,6 +17,73 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2026-01-09] - Post-Air Script Status Fix & SoundCloud Workflow Updates
+
+### Fixed
+- **Post-air script not processing episodes with `publishedStatus: 'submitted'`** - Fixed issue where episodes that aired but had `publishedStatus: 'submitted'` were not processed by the post-air script
+  - Root cause: Query only matched episodes with `publishedStatus: 'published'`, but episodes may be `'submitted'` when they air and only become `'published'` after SoundCloud upload
+  - Solution: Updated query to include both `'published'` and `'submitted'` statuses using `or` condition
+  - Location: `scripts/cron/postair_archive_cleanup.ts` and `src/app/api/lifecycle/postair-archive/route.ts`
+  - Impact: Episodes now have `firstAiredAt` set correctly even when they're in `'submitted'` status
+
+- **Post-air script not updating `airStatus` to `'aired'`** - Fixed issue where post-air script didn't update `airStatus` field after processing episodes
+  - Root cause: Script updated `firstAiredAt`, `lastAiredAt`, and `plays` but didn't set `airStatus: 'aired'`
+  - Solution: Added `airStatus: 'aired'` to the metrics update in `updateAiringMetrics()` function
+  - Location: `scripts/cron/postair_archive_cleanup.ts` and `src/app/api/lifecycle/postair-archive/route.ts`
+  - Impact: Episodes now correctly marked as `'aired'` after processing, enabling SoundCloud upload workflow
+
+- **Security allowlist blocking rsync_postair_weekly.sh** - Fixed issue where post-air archiving script was blocked by security kill-switch
+  - Root cause: `rsync_postair_weekly.sh` script execution was blocked by security allowlist (bash in deny list)
+  - Solution: Added security exception for authorized rsync scripts (`rsync_postair_weekly.sh` and `rsync_pull.sh`) when executed via `execFile` from authorized locations
+  - Location: `src/server/lib/subprocessGlobalDiag.ts`
+  - Impact: Post-air archiving script can now execute (requires SSH access to be configured separately)
+
+### Changed
+- **Post-air query criteria** - Expanded query to match episodes with either `publishedStatus: 'published'` or `publishedStatus: 'submitted'`
+  - Episodes in `'submitted'` status are now processed after airing
+  - Episodes are marked as `'aired'` after processing
+  - Location: `scripts/cron/postair_archive_cleanup.ts:508-515` and `src/app/api/lifecycle/postair-archive/route.ts:96-103`
+
+- **Post-air archiving logic** - Added `publishedStatus` check before archiving episodes
+  - Episodes are only archived if `publishedStatus: 'published'` (uploaded to SoundCloud)
+  - Prevents archiving and deleting working files before SoundCloud upload completes
+  - Location: `scripts/cron/postair_archive_cleanup.ts:323-340`
+  - Impact: Ensures working files remain available for SoundCloud upload
+
+- **Weekly archive path calculation** - Changed from `scheduledEnd` to `firstAiredAt` for weekly bucket determination
+  - Archive paths now based on when episode actually aired, not scheduled end time
+  - Location: `scripts/cron/postair_archive_cleanup.ts:393-407`
+  - Impact: Episodes grouped by actual air date for better archival organization
+
+- **SoundCloud upload script** - Added automatic `publishedStatus` update after upload
+  - Script now checks if track is available on SoundCloud (not in processing state)
+  - Sets `publishedStatus: 'published'` once track is available (with retry logic)
+  - Location: `scripts/upload-episodes-soundcloud.ts`
+  - Impact: Episodes automatically marked as published after successful SoundCloud upload
+
+### Documentation
+- Added post-air audit documentation for January 9, 2025
+  - Documents workflow analysis and fixes applied
+  - Location: `docs/POST_AIR_AUDIT_2025-01-09.md`, `docs/POST_AIR_DIAGNOSIS_2025-01-09.md`
+
+### Verified
+- Tested post-air script with 5 episodes from Thursday, January 8, 2025
+  - All episodes successfully processed: `firstAiredAt` set, `airStatus` updated to `'aired'`
+  - Episodes ready for SoundCloud upload workflow
+  - Script: `scripts/check-episode-status.ts` created for verification
+
+- Tested SoundCloud upload script with 5 episodes
+  - All episodes successfully uploaded to SoundCloud
+  - `publishedStatus` automatically set to `'published'` after upload
+  - Tracks were immediately available (no processing delay)
+
+- Tested post-air archiving logic
+  - Archives only episodes with `publishedStatus: 'published'`
+  - Archive paths correctly use `firstAiredAt` for weekly bucket (week-02 for Jan 8, 2026)
+  - Security allowlist fix verified (no more security blocks)
+
+---
+
 ## [2026-01-06] - Episode Slug Duplicate Constraint Fix
 
 ### Fixed
@@ -30,6 +97,32 @@ This changelog documents all significant changes to the Payload CMS backend serv
   - Benefits: Clean slugs when no conflict exists; date suffix only added when needed to resolve duplicates
   - Location: `src/collections/Episodes.ts` (beforeChange hook)
   - Impact: Resolves "Value must be unique" errors when saving episodes, allowing staff to successfully update episode information
+
+---
+
+## [2026-01-06] - Inbox Hydration Duration Extraction Fix
+
+### Fixed
+- **Inbox hydration missing realDuration** - Fixed issue where inbox hydration script didn't extract and set `realDuration` and `roundedDuration` from audio files
+  - Root cause: Script uploaded files to LibreTime but didn't extract audio metadata to populate duration fields
+  - Solution: Added audio metadata extraction using `ffprobe` (same approach as upload form validation):
+    1. Extract duration, bitrate, and sample rate from audio file using `ffprobe`
+    2. Only extract if `realDuration` or `roundedDuration` are missing (safeguard - upload form should set them)
+    3. Calculate `roundedDuration` using same logic as `import-sc-durations.ts` (rounds to nearest 5 minutes, with special cases for 55-65 min → 60, 85-95 min → 90)
+    4. Update episode with `realDuration`, `duration`, `roundedDuration`, and `bitrate` fields
+  - Location: `scripts/hydrate-inbox-lt.ts` (`updateEpisodeWithAirStatus` function)
+  - Impact: Episodes uploaded via inbox hydration now have duration metadata populated, matching upload form behavior
+
+### Changed
+- **Inbox hydration eligibility filter** - Updated filter to treat empty strings as missing values (not just null/undefined)
+  - Previously, episodes with `libretimeTrackId: ""` or `libretimeFilepathRelative: ""` were incorrectly excluded
+  - Now checks for null, undefined, or empty string values
+  - Location: `scripts/hydrate-inbox-lt.ts` (`filterEligibleEpisodes` function)
+
+### Added
+- **ffmpeg support in jobs container** - Added `ffmpeg` package to jobs Docker image for audio metadata extraction
+  - Includes `ffprobe` tool needed for extracting duration, bitrate, and sample rate
+  - Location: `Dockerfile.jobs`
 
 ---
 

@@ -94,7 +94,12 @@ export async function POST(req: NextRequest) {
       collection: 'episodes',
       where: {
         and: [
-          { publishedStatus: { equals: 'published' } },
+          {
+            or: [
+              { publishedStatus: { equals: 'published' } },
+              { publishedStatus: { equals: 'submitted' } },
+            ],
+          },
           { scheduledEnd: { exists: true } },
           { scheduledEnd: { greater_than_equal: fortyEightHoursAgo.toISOString() } },
           { scheduledEnd: { less_than: tenMinutesAgo.toISOString() } },
@@ -158,6 +163,7 @@ export async function POST(req: NextRequest) {
                 lastAiredAt: scheduledEnd,
                 plays: plays + 1,
                 airTimingIsEstimated: true,
+                airStatus: 'aired', // Mark as aired after processing
                 ...(firstAiredAt ? {} : { firstAiredAt: episode.scheduledAt }),
               },
             })

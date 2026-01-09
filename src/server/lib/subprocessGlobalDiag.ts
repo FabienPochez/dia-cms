@@ -108,23 +108,64 @@ function shouldBlockCommand(
   // Extract base command (first word, before any shell metacharacters)
   const baseCmd = command.split(/[\s|&;<>`$(){}[\]"'\\]/)[0].toLowerCase().trim()
   
-  // SECURITY EXCEPTION: Allow bash for authorized rsync operations
-  // Check if this is bash calling our authorized rsync_pull.sh script
-  if (baseCmd === 'bash' && command.includes('rsync_pull.sh')) {
-    // Verify it's the correct script path (authorized location)
-    const scriptPathMatch = command.match(/bash\s+['"]?([^'"]*rsync_pull\.sh)/)
-    if (scriptPathMatch && scriptPathMatch[1]) {
-      const scriptPath = scriptPathMatch[1]
+  // SECURITY EXCEPTION: Allow execFile on authorized script files FIRST
+  // When execFile is used on a script file, check if it's an authorized script
+  // This must come before the deny list check
+  if (method === 'execFile' || method === 'execFileSync') {
+    // Check for authorized rsync scripts
+    if (command.includes('rsync_postair_weekly.sh')) {
       // Only allow if script is in the authorized location
-      if (scriptPath.includes('/scripts/sh/archive/rsync_pull.sh') || 
-          scriptPath.includes('scripts/sh/archive/rsync_pull.sh')) {
+      if (command.includes('/scripts/sh/archive/rsync_postair_weekly.sh') || 
+          command.includes('scripts/sh/archive/rsync_postair_weekly.sh')) {
+        // This is an authorized rsync operation - allow it
+        return { blocked: false }
+      }
+    }
+    if (command.includes('rsync_pull.sh')) {
+      // Only allow if script is in the authorized location
+      if (command.includes('/scripts/sh/archive/rsync_pull.sh') || 
+          command.includes('scripts/sh/archive/rsync_pull.sh')) {
         // This is an authorized rsync operation - allow it
         return { blocked: false }
       }
     }
   }
   
-  // Check deny list first (hard deny)
+  // SECURITY EXCEPTION: Allow bash for authorized rsync operations
+  // Check if this is bash calling our authorized rsync scripts
+  if (baseCmd === 'bash') {
+    // Check for rsync_pull.sh
+    if (command.includes('rsync_pull.sh')) {
+      // Verify it's the correct script path (authorized location)
+      const scriptPathMatch = command.match(/bash\s+['"]?([^'"]*rsync_pull\.sh)/)
+      if (scriptPathMatch && scriptPathMatch[1]) {
+        const scriptPath = scriptPathMatch[1]
+        // Only allow if script is in the authorized location
+        if (scriptPath.includes('/scripts/sh/archive/rsync_pull.sh') || 
+            scriptPath.includes('scripts/sh/archive/rsync_pull.sh')) {
+          // This is an authorized rsync operation - allow it
+          return { blocked: false }
+        }
+      }
+    }
+    
+    // Check for rsync_postair_weekly.sh
+    if (command.includes('rsync_postair_weekly.sh')) {
+      // Verify it's the correct script path (authorized location)
+      const scriptPathMatch = command.match(/bash\s+['"]?([^'"]*rsync_postair_weekly\.sh)/)
+      if (scriptPathMatch && scriptPathMatch[1]) {
+        const scriptPath = scriptPathMatch[1]
+        // Only allow if script is in the authorized location
+        if (scriptPath.includes('/scripts/sh/archive/rsync_postair_weekly.sh') || 
+            scriptPath.includes('scripts/sh/archive/rsync_postair_weekly.sh')) {
+          // This is an authorized rsync operation - allow it
+          return { blocked: false }
+        }
+      }
+    }
+  }
+  
+  // Check deny list (hard deny)
   if (DENY_LIST.has(baseCmd)) {
     return { blocked: true, reason: `deny_list: ${baseCmd}` }
   }

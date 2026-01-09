@@ -62,6 +62,7 @@ interface Episode {
 interface SoundCloudTrackResponse {
   id: number
   permalink_url: string
+  state?: string // 'processing' | 'finished' | 'failed'
   [key: string]: any
 }
 
@@ -464,23 +465,59 @@ async function uploadToSoundCloud(
 }
 
 /**
+ * Check if SoundCloud track is available (not in processing state)
+ */
+async function checkTrackAvailability(
+  trackId: number,
+  accessToken: string,
+): Promise<boolean> {
+  try {
+    const response = await axios.get(
+      `${SOUNDCLOUD_API_BASE}/tracks/${trackId}`,
+      {
+        headers: {
+          Authorization: `OAuth ${accessToken}`,
+        },
+        timeout: 10000,
+      }
+    )
+    
+    const track = response.data
+    // Track is available if state is 'finished' or undefined (legacy tracks)
+    return track.state === 'finished' || !track.state
+  } catch (error: any) {
+    // If we can't check, assume it's available (better to publish than not)
+    console.warn(`⚠️  Could not check track availability: ${error.message}`)
+    return true
+  }
+}
+
+/**
  * Update Payload episode with SoundCloud data
  */
 async function updatePayloadEpisode(
   episodeId: string,
   trackId: number,
   soundcloudUrl: string,
+  setPublished: boolean = false,
 ): Promise<void> {
   try {
     const scPermalink = extractSoundCloudPermalink(soundcloudUrl)
     
+    const updateData: any = {
+      track_id: trackId,
+      soundcloud: soundcloudUrl,
+      scPermalink: scPermalink,
+    }
+    
+    // Set publishedStatus to 'published' if track is available
+    if (setPublished) {
+      updateData.publishedStatus = 'published'
+    }
+    
     await axios.patch(
       `${PAYLOAD_API_URL}/api/episodes/${episodeId}`,
-      {
-        track_id: trackId,
-        soundcloud: soundcloudUrl,
-        scPermalink: scPermalink,
-      },
+      updateData,
       {
         headers: buildPayloadAuthHeaders(),
         timeout: 10000,
@@ -559,10 +596,41 @@ async function processEpisode(episodeId: string, accessToken: string): Promise<b
     
     // Use the permalink_url from response (SoundCloud may adjust the slug, e.g., append -1 on duplicates)
     const cleanUrl = cleanSoundCloudUrl(scResponse.permalink_url)
-    console.log(`   💾 Updating Payload...`)
-    await updatePayloadEpisode(episode.id, scResponse.id, cleanUrl)
+    console.log(`   💾 Updating Payload with SoundCloud data...`)
+    await updatePayloadEpisode(episode.id, scResponse.id, cleanUrl, false)
     
     console.log(`   ✅ Payload updated with track_id=${scResponse.id}, soundcloud=${cleanUrl}, scPermalink=${extractSoundCloudPermalink(cleanUrl)}`)
+    
+    // Check if track is available (not in processing state)
+    // SoundCloud usually processes quickly, so wait a bit and check
+    console.log(`   ⏳ Waiting 5 seconds for SoundCloud to process track...`)
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    
+    console.log(`   🔍 Checking if track is available on SoundCloud...`)
+    let isAvailable = false
+    let retries = 0
+    const maxRetries = 3
+    
+    while (!isAvailable && retries < maxRetries) {
+      isAvailable = await checkTrackAvailability(scResponse.id, accessToken)
+      
+      if (isAvailable) {
+        console.log(`   ✅ Track is available, setting publishedStatus to 'published'...`)
+        await updatePayloadEpisode(episode.id, scResponse.id, cleanUrl, true)
+        console.log(`   ✅ Published status updated to 'published'`)
+        break
+      } else {
+        retries++
+        if (retries < maxRetries) {
+          console.log(`   ⏳ Track still processing (attempt ${retries}/${maxRetries}), waiting 10 seconds...`)
+          await new Promise((resolve) => setTimeout(resolve, 10000))
+        } else {
+          console.log(`   ⏳ Track is still processing on SoundCloud after ${maxRetries} attempts`)
+          console.log(`   ⚠️  publishedStatus will remain '${episode.publishedStatus}' - track will be set to 'published' once processing completes`)
+          console.log(`   💡 You may need to run this script again later, or manually update publishedStatus`)
+        }
+      }
+    }
     
     return true
   } catch (error: any) {

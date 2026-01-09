@@ -233,6 +233,7 @@ async function updateAiringMetrics(payload: Payload, episode: any): Promise<void
     lastAiredAt: scheduledEnd, // Always update to most recent scheduled end
     plays: plays + 1, // Increment plays
     airTimingIsEstimated: true, // Schedule-based, not playback-confirmed
+    airStatus: 'aired', // Mark as aired after processing
   }
 
   // Set firstAiredAt only if null
@@ -318,6 +319,25 @@ async function processEpisode(payload: Payload, episode: any): Promise<void> {
       console.log(`✅ Cleanup completed for already-archived episode ${episodeId}`)
     } else {
       // Not archived, need to archive first
+      // Only archive if publishedStatus is 'published' (uploaded to SoundCloud)
+      const publishedStatus = episode.publishedStatus
+      if (publishedStatus !== 'published') {
+        console.log(
+          `⏭️  Episode ${episodeId} not archived yet and publishedStatus is '${publishedStatus}' (expected 'published')`,
+        )
+        console.log(
+          `   Skipping archive - episode must be uploaded to SoundCloud first before archiving`,
+        )
+        const duration_ms = Date.now() - startTime
+        await logEntry({
+          operation: 'cron_postair',
+          episodeId,
+          action: 'skipped',
+          ts: new Date().toISOString(),
+          duration_ms,
+        })
+        return
+      }
       const workingAbs = path.join(LIBRETIME_LIBRARY_ROOT, libretimeFilepathRelative)
 
       // Check if working file exists
@@ -370,8 +390,22 @@ async function processEpisode(payload: Payload, episode: any): Promise<void> {
         return
       }
 
-      // Compute weekly archive path based on scheduled end time
-      const airedDate = new Date(scheduledEnd)
+      // Compute weekly archive path based on firstAiredAt (when episode actually aired)
+      const firstAiredAt = episode.firstAiredAt
+      if (!firstAiredAt) {
+        console.log(`❌ Episode ${episodeId} has no firstAiredAt - cannot determine archive week`)
+        const duration_ms = Date.now() - startTime
+        await logEntry({
+          operation: 'cron_postair',
+          episodeId,
+          action: 'error',
+          ts: new Date().toISOString(),
+          duration_ms,
+          rsyncExitCode: 1,
+        })
+        return
+      }
+      const airedDate = new Date(firstAiredAt)
       const weeklyDir = getWeeklyArchivePath(airedDate)
       const basename = path.basename(libretimeFilepathRelative)
       const destRel = `${weeklyDir}/${basename}`
@@ -506,7 +540,12 @@ async function queryEpisodes(payload: Payload): Promise<any[]> {
     collection: 'episodes',
     where: {
       and: [
-        { publishedStatus: { equals: 'published' } },
+        {
+          or: [
+            { publishedStatus: { equals: 'published' } },
+            { publishedStatus: { equals: 'submitted' } },
+          ],
+        },
         { scheduledEnd: { exists: true } },
         { scheduledEnd: { greater_than_equal: fortyEightHoursAgo.toISOString() } },
         { scheduledEnd: { less_than: tenMinutesAgo.toISOString() } },
