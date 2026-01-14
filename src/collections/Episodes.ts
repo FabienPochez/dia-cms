@@ -634,8 +634,8 @@ const Episodes: CollectionConfig = {
     beforeChange: [
       // Audio validation hook - validate file specs when media is added/changed
       async ({ data, originalDoc, req, operation: _operation }: any) => {
-        // Only validate if media and roundedDuration are present
-        if (!data.media || !data.roundedDuration) {
+        // Only process if media is present
+        if (!data.media) {
           return data
         }
 
@@ -653,11 +653,11 @@ const Episodes: CollectionConfig = {
           return data
         }
 
-        console.log('[EPISODE_VALIDATION] Validating audio file for episode')
+        console.log('[EPISODE_VALIDATION] Extracting audio metadata for episode')
 
         try {
           // Dynamically import validation utilities (server-side only)
-          const { validateAudioFile, getMediaTrackFilePath } = await import(
+          const { validateAudioFile, getMediaTrackFilePath, getAudioMetadata } = await import(
             '../utils/audioValidation'
           )
 
@@ -669,42 +669,71 @@ const Episodes: CollectionConfig = {
             throw new Error('Could not find audio file for validation')
           }
 
-          // Validate audio file
-          const validationResult = await validateAudioFile(filePath, data.roundedDuration)
+          // First, extract metadata to get realDuration
+          const metadata = await getAudioMetadata(filePath)
 
-          if (!validationResult.valid) {
-            const errorMessage = `Audio validation failed: ${validationResult.error}`
-            const error = new Error(errorMessage)
+          // Set realDuration and duration from extracted metadata
+          data.realDuration = metadata.durationSec
+          data.duration = metadata.durationSec
+          data.bitrate = metadata.bitrateKbps
 
-            // Log the error with user information
-            await logUploadError({
-              payload: req.payload,
-              user: req.user,
-              collection: 'episodes',
-              operation: _operation,
-              errorType: 'audio_quality',
-              errorCode: parseErrorCode(errorMessage),
-              errorMessage,
-              stackTrace: error.stack,
-              context: {
-                ...extractValidationContext(error, data),
-                validationResult,
-                filePath,
-              },
-              httpStatus: 400,
-              req,
-            })
+          // Calculate roundedDuration from realDuration if not already set
+          if (!data.roundedDuration && data.realDuration) {
+            const minutes = data.realDuration / 60
 
-            throw error
+            // Hard-coded rounding rules (matching import-sc-durations.ts)
+            if (minutes >= 55 && minutes <= 65) {
+              data.roundedDuration = 60
+            } else if (minutes >= 85 && minutes <= 95) {
+              data.roundedDuration = 90
+            } else if (minutes >= 115 && minutes <= 125) {
+              data.roundedDuration = 120
+            } else {
+              // Default: round to nearest 5 minutes
+              data.roundedDuration = Math.round(minutes / 5) * 5
+            }
+
+            console.log(
+              `[EPISODE_VALIDATION] Calculated roundedDuration=${data.roundedDuration} from realDuration=${data.realDuration}s`,
+            )
           }
 
-          console.log('[EPISODE_VALIDATION] ✅ Audio validation passed')
+          // Validate audio file if roundedDuration is provided (user expectation)
+          // This validates against user's expected duration if they provided one
+          if (data.roundedDuration) {
+            const validationResult = await validateAudioFile(filePath, data.roundedDuration)
 
-          // Update episode with extracted metadata if available
-          if (validationResult.metadata) {
-            data.realDuration = validationResult.metadata.durationSec
-            data.duration = validationResult.metadata.durationSec
-            data.bitrate = validationResult.metadata.bitrateKbps
+            if (!validationResult.valid) {
+              const errorMessage = `Audio validation failed: ${validationResult.error}`
+              const error = new Error(errorMessage)
+
+              // Log the error with user information
+              await logUploadError({
+                payload: req.payload,
+                user: req.user,
+                collection: 'episodes',
+                operation: _operation,
+                errorType: 'audio_quality',
+                errorCode: parseErrorCode(errorMessage),
+                errorMessage,
+                stackTrace: error.stack,
+                context: {
+                  ...extractValidationContext(error, data),
+                  validationResult,
+                  filePath,
+                },
+                httpStatus: 400,
+                req,
+              })
+
+              throw error
+            }
+
+            console.log('[EPISODE_VALIDATION] ✅ Audio validation passed')
+          } else {
+            console.log(
+              '[EPISODE_VALIDATION] ⚠️  No roundedDuration provided, skipping validation (metadata extracted)',
+            )
           }
         } catch (error) {
           console.error('[EPISODE_VALIDATION] Validation failed:', error)

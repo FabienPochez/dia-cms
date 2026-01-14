@@ -16,7 +16,7 @@ interface ValidationResult {
 /**
  * Extract audio metadata using ffprobe
  */
-async function getAudioMetadata(filePath: string): Promise<AudioMetadata> {
+export async function getAudioMetadata(filePath: string): Promise<AudioMetadata> {
   try {
     // Use system ffprobe (installed via apk in Alpine container)
     // Security: Use execFile with array arguments to prevent command injection

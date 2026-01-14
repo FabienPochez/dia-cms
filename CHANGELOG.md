@@ -17,7 +17,41 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
-## [2026-01-14] - Live Recordings Hydration Script
+## [2026-01-14] - Live Recordings Hydration Script & Audio Validation Improvements
+
+### Added
+- **Live recordings hydration script** – New script `scripts/hydrate-inbox-live.ts` for processing live studio recordings:
+  - Scans `/srv/media/new-live` for `*.mp3` files with `{episodeId}__...` filename pattern
+  - Fetches eligible episodes from Payload (pendingReview=false, airStatus='scheduled' or 'aired', missing LibreTime fields)
+  - Uploads files to LibreTime via HTTP API using internal network URL
+  - Sets LibreTime track name (`track_title`) to episode title after upload
+  - Polls LibreTime until file analysis completes and filepath is available
+  - Updates Payload episodes with `libretimeTrackId`, `libretimeFilepathRelative`, and duration metadata
+  - **Preserves existing `airStatus`** (does not change 'scheduled' to 'queued' like inbox hydration)
+  - Designed for episodes that have already aired or are scheduled to air
+  - Includes CLI flags: `--inbox`, `--poll-seconds`, `--timeout-seconds`, `--dry-run`
+  - Implements lockfile (`/tmp/lt-hydrate-inbox-live.lock`) to prevent concurrent runs
+  - Based on `hydrate-inbox-lt.ts` but adapted for live recordings workflow
+  - Location: `scripts/hydrate-inbox-live.ts`
+  - Impact: Enables hydration of live studio recordings, allowing post-air script to process them and set `firstAiredAt` and `airStatus: 'aired'`
+
+### Changed
+- **Episode audio validation hook refactoring** – Improved audio validation hook to extract metadata first, rather than requiring `roundedDuration` to be present:
+  - Hook now extracts audio metadata (`realDuration`, `duration`, `bitrate`) automatically when media is attached
+  - Calculates `roundedDuration` from `realDuration` if not already set (using same rounding logic as import scripts)
+  - Removed requirement for `roundedDuration` to be present before validation
+  - Makes the hook more robust and works even when duration metadata isn't pre-populated
+  - Location: `src/collections/Episodes.ts` (beforeChange hook)
+  - Impact: Episodes with media attachments now automatically get duration metadata populated, improving workflow flexibility
+
+- **Inbox hydration script duration extraction** – Added duration extraction helper functions to inbox hydration script:
+  - Added `getAudioMetadata()`, `calculateRoundedDuration()`, and `findEpisodeFilePath()` helper functions
+  - Completes the duration extraction functionality referenced in 2026-01-06 changelog entry
+  - Location: `scripts/hydrate-inbox-lt.ts`
+
+- **Audio validation utility exports** – Exported `getAudioMetadata` function from audio validation utilities:
+  - Allows Episodes collection hook to import and use the function
+  - Location: `src/utils/audioValidation.ts`
 
 ### Added
 - **Live recordings hydration script** – New script `scripts/hydrate-inbox-live.ts` for processing live studio recordings:

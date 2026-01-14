@@ -89,6 +89,12 @@ interface LibretimeData {
   relativePath: string
 }
 
+interface AudioMetadata {
+  durationSec: number
+  bitrateKbps: number
+  sampleRateHz: number
+}
+
 /**
  * Build Payload authentication headers with API Key preference and JWT fallback
  */
@@ -632,13 +638,13 @@ function filterEligibleEpisodes(episodes: PayloadEpisode[]): PayloadEpisode[] {
       return false
     }
 
-    // libretimeTrackId is null OR libretimeFilepathRelative is null
-    if (
-      episode.libretimeTrackId !== null &&
-      episode.libretimeTrackId !== undefined &&
-      episode.libretimeFilepathRelative !== null &&
-      episode.libretimeFilepathRelative !== undefined
-    ) {
+    // libretimeTrackId is null/undefined/empty OR libretimeFilepathRelative is null/undefined/empty
+    // Check if both fields are set (not null, not undefined, and not empty string)
+    const hasLibreTimeTrackId = episode.libretimeTrackId != null && episode.libretimeTrackId !== ''
+    const hasLibreTimeFilepath = episode.libretimeFilepathRelative != null && episode.libretimeFilepathRelative !== ''
+    
+    // If both are set, episode is already hydrated, skip it
+    if (hasLibreTimeTrackId && hasLibreTimeFilepath) {
       return false
     }
 
@@ -650,25 +656,153 @@ function filterEligibleEpisodes(episodes: PayloadEpisode[]): PayloadEpisode[] {
 }
 
 /**
+ * Extract audio metadata using ffprobe
+ */
+async function getAudioMetadata(filePath: string): Promise<AudioMetadata | null> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v quiet -print_format json -show_format -show_streams "${filePath}"`,
+    )
+
+    const data = JSON.parse(stdout)
+
+    // Find audio stream
+    const audioStream = data.streams?.find((s: any) => s.codec_type === 'audio')
+
+    if (!audioStream) {
+      console.log(`⚠️  No audio stream found in file: ${filePath}`)
+      return null
+    }
+
+    // Extract metadata
+    const durationSec = Math.round(parseFloat(data.format?.duration || '0'))
+    const bitrateKbps = Math.round(parseInt(data.format?.bit_rate || '0') / 1000)
+    const sampleRateHz = parseInt(audioStream.sample_rate || '0')
+
+    return {
+      durationSec,
+      bitrateKbps,
+      sampleRateHz,
+    }
+  } catch (error: any) {
+    console.log(`⚠️  Failed to extract audio metadata from ${filePath}: ${error.message}`)
+    return null
+  }
+}
+
+/**
+ * Calculate rounded duration (same logic as import-sc-durations.ts)
+ */
+function calculateRoundedDuration(seconds: number): number {
+  const minutes = seconds / 60
+
+  // Hard-coded rounding rules
+  if (minutes >= 55 && minutes <= 65) return 60
+  if (minutes >= 85 && minutes <= 95) return 90
+
+  // Default: round to nearest 5 minutes
+  return Math.round(minutes / 5) * 5
+}
+
+/**
+ * Find file path for episode in inbox directory
+ */
+async function findEpisodeFilePath(episodeId: string, inboxPath: string): Promise<string | null> {
+  try {
+    // Look for file matching pattern: {episodeId}__*.mp3
+    const files = await fs.readdir(inboxPath)
+    const matchingFile = files.find((file) => file.startsWith(`${episodeId}__`) && file.endsWith('.mp3'))
+    
+    if (matchingFile) {
+      return path.join(inboxPath, matchingFile)
+    }
+    
+    return null
+  } catch (error: any) {
+    console.log(`⚠️  Could not search inbox directory: ${error.message}`)
+    return null
+  }
+}
+
+/**
  * Update Payload episode with LibreTime track ID and filepath, and set airStatus to 'queued'
+ * Also extracts and updates realDuration, duration, roundedDuration, and bitrate from audio file
+ * Only extracts duration if realDuration and roundedDuration are not already present
  */
 async function updateEpisodeWithAirStatus(
   episodeId: string,
   libretimeData: { id: number; relativePath: string },
+  inboxPath?: string,
 ): Promise<void> {
   console.log(
     `🔗 Updating Payload episode ${episodeId} with LibreTime track ID: ${libretimeData.id} and filepath: ${libretimeData.relativePath}`,
   )
 
+  // Fetch current episode to check if duration fields are already set
+  let currentEpisode: any = null
   try {
-    // Update the episode with LT fields and airStatus
+    const getResponse = await axios.get(`${PAYLOAD_API_URL}/api/episodes/${episodeId}`, {
+      headers: buildPayloadAuthHeaders(),
+      timeout: 10000,
+    })
+    currentEpisode = getResponse.data
+  } catch (error: any) {
+    console.log(`⚠️  Could not fetch current episode data: ${error.message}`)
+  }
+
+  // Check if realDuration and roundedDuration are already present
+  const hasRealDuration = currentEpisode?.realDuration != null && currentEpisode.realDuration > 0
+  const hasRoundedDuration = currentEpisode?.roundedDuration != null && currentEpisode.roundedDuration > 0
+
+  // Try to extract audio metadata only if duration fields are missing
+  let audioMetadata: AudioMetadata | null = null
+  if (!hasRealDuration || !hasRoundedDuration) {
+    if (inboxPath) {
+      const filePath = await findEpisodeFilePath(episodeId, inboxPath)
+      if (filePath) {
+        console.log(`🎵 Extracting audio metadata from: ${filePath}`)
+        audioMetadata = await getAudioMetadata(filePath)
+        if (audioMetadata) {
+          console.log(`   Duration: ${audioMetadata.durationSec}s, Bitrate: ${audioMetadata.bitrateKbps}kbps`)
+        }
+      } else {
+        console.log(`⚠️  Could not find audio file in inbox for duration extraction`)
+      }
+    } else {
+      console.log(`⚠️  No inbox path provided, skipping duration extraction`)
+    }
+  } else {
+    console.log(`✅ Episode already has realDuration (${currentEpisode.realDuration}s) and roundedDuration (${currentEpisode.roundedDuration}min), skipping extraction`)
+  }
+
+  // Build update payload
+  const updateData: any = {
+    libretimeTrackId: libretimeData.id.toString(),
+    libretimeFilepathRelative: libretimeData.relativePath,
+    airStatus: 'queued',
+  }
+
+  // Add duration fields only if metadata was extracted AND fields are missing
+  if (audioMetadata) {
+    if (!hasRealDuration) {
+      updateData.realDuration = audioMetadata.durationSec
+      updateData.duration = audioMetadata.durationSec
+    }
+    if (!hasRoundedDuration) {
+      updateData.roundedDuration = calculateRoundedDuration(audioMetadata.durationSec)
+    }
+    // Always update bitrate if we extracted it (it's not set by upload form)
+    updateData.bitrate = audioMetadata.bitrateKbps
+    if (!hasRealDuration || !hasRoundedDuration) {
+      console.log(`   Setting duration fields: realDuration=${updateData.realDuration || 'unchanged'}s, roundedDuration=${updateData.roundedDuration || 'unchanged'}min`)
+    }
+  }
+
+  try {
+    // Update the episode with LT fields, airStatus, and duration metadata
     const patchResponse = await axios.patch(
       `${PAYLOAD_API_URL}/api/episodes/${episodeId}`,
-      {
-        libretimeTrackId: libretimeData.id.toString(),
-        libretimeFilepathRelative: libretimeData.relativePath,
-        airStatus: 'queued',
-      },
+      updateData,
       {
         headers: buildPayloadAuthHeaders(),
         timeout: 10000,
@@ -679,6 +813,11 @@ async function updateEpisodeWithAirStatus(
     console.log(`   LibreTime track ID: ${libretimeData.id}`)
     console.log(`   LibreTime filepath: ${libretimeData.relativePath}`)
     console.log(`   airStatus: queued`)
+    if (audioMetadata) {
+      console.log(`   realDuration: ${updateData.realDuration}s`)
+      console.log(`   roundedDuration: ${updateData.roundedDuration}min`)
+      console.log(`   bitrate: ${updateData.bitrate}kbps`)
+    }
   } catch (error: any) {
     if (error.response?.status === 404) {
       throw new Error(`Episode ${episodeId} not found in Payload`)
@@ -696,6 +835,7 @@ async function pollUntilHydrated(
   timeoutSeconds: number,
   pollIntervalSeconds: number,
   dryRun: boolean,
+  inboxPath?: string,
 ): Promise<Map<string, LibretimeData | null>> {
   console.log(
     `🔍 Starting polling for ${episodeIds.length} episodes (timeout: ${timeoutSeconds}s, interval: ${pollIntervalSeconds}s)`,
@@ -741,7 +881,7 @@ async function pollUntilHydrated(
 
             // Update Payload if not dry-run
             if (!dryRun) {
-              await updateEpisodeWithAirStatus(episodeId, libretimeData)
+              await updateEpisodeWithAirStatus(episodeId, libretimeData, inboxPath)
             } else {
               console.log(`🔍 DRY-RUN: Would update episode ${episodeId} with airStatus='queued'`)
             }
@@ -943,7 +1083,7 @@ async function hydrateInbox(): Promise<void> {
                   const libretimeData = await hydrateEpisodeWithLtData(episodeId, trackId, baseUrl)
                   if (libretimeData.relativePath) {
                     if (!dryRun) {
-                      await updateEpisodeWithAirStatus(episodeId, libretimeData)
+                      await updateEpisodeWithAirStatus(episodeId, libretimeData, inboxPath)
                     } else {
                       console.log(`🔍 DRY-RUN: Would update episode ${episodeId} with airStatus='queued'`)
                     }
@@ -979,7 +1119,7 @@ async function hydrateInbox(): Promise<void> {
           
           if (libretimeData.relativePath) {
             if (!dryRun) {
-              await updateEpisodeWithAirStatus(episodeId, libretimeData)
+              await updateEpisodeWithAirStatus(episodeId, libretimeData, inboxPath)
             } else {
               console.log(`🔍 DRY-RUN: Would update episode ${episodeId} with airStatus='queued'`)
             }
@@ -1004,6 +1144,7 @@ async function hydrateInbox(): Promise<void> {
         timeoutSeconds,
         pollSeconds,
         dryRun,
+        inboxPath,
       )
     } else {
       console.log('✅ All episodes already existed in LibreTime and have been hydrated')
