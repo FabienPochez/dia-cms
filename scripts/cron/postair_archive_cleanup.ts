@@ -262,12 +262,6 @@ async function processEpisode(payload: Payload, episode: any): Promise<void> {
   const hasArchiveFile = episode.hasArchiveFile || false
   const scheduledEnd = episode.scheduledEnd
 
-  // Skip episodes without LibreTime path
-  if (!libretimeFilepathRelative) {
-    console.log(`⏭️  Episode ${episodeId} has no libretimeFilepathRelative, skipping`)
-    return
-  }
-
   const startTime = Date.now()
 
   try {
@@ -275,8 +269,25 @@ async function processEpisode(payload: Payload, episode: any): Promise<void> {
     console.log(`   Archive status: ${hasArchiveFile ? 'archived' : 'not archived'}`)
     console.log(`   Scheduled end: ${scheduledEnd}`)
 
-    // Update airing metrics first
+    // Update airing metrics first (doesn't require file path)
     await updateAiringMetrics(payload, episode)
+
+    // Skip archiving/cleanup if no file path (e.g., live recordings not yet uploaded)
+    if (!libretimeFilepathRelative) {
+      console.log(
+        `⏭️  Episode ${episodeId} has no libretimeFilepathRelative, skipping archiving/cleanup`,
+      )
+      console.log(`   Metrics updated (firstAiredAt, airStatus='aired')`)
+      const duration_ms = Date.now() - startTime
+      await logEntry({
+        operation: 'cron_postair',
+        episodeId,
+        action: 'skipped',
+        ts: new Date().toISOString(),
+        duration_ms,
+      })
+      return
+    }
 
     if (hasArchiveFile) {
       // Already archived, just cleanup the working file directly
@@ -543,17 +554,12 @@ async function queryEpisodes(payload: Payload): Promise<any[]> {
     collection: 'episodes',
     where: {
       and: [
-        {
-          or: [
-            { publishedStatus: { equals: 'published' } },
-            { publishedStatus: { equals: 'submitted' } },
-          ],
-        },
         { scheduledEnd: { exists: true } },
         { scheduledEnd: { greater_than_equal: fortyEightHoursAgo.toISOString() } },
         { scheduledEnd: { less_than: tenMinutesAgo.toISOString() } },
-        { libretimeFilepathRelative: { exists: true } },
-        { libretimeFilepathRelative: { not_equals: '' } },
+        // Note: publishedStatus is NOT required here - we process all aired episodes regardless of status
+        // Note: libretimeFilepathRelative is NOT required here - we update metrics for all aired episodes
+        // File path is only needed for archiving/cleanup operations
       ],
     },
     limit: 200, // Reasonable limit for 48h window

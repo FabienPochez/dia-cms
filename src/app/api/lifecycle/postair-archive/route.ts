@@ -94,17 +94,12 @@ export async function POST(req: NextRequest) {
       collection: 'episodes',
       where: {
         and: [
-          {
-            or: [
-              { publishedStatus: { equals: 'published' } },
-              { publishedStatus: { equals: 'submitted' } },
-            ],
-          },
           { scheduledEnd: { exists: true } },
           { scheduledEnd: { greater_than_equal: fortyEightHoursAgo.toISOString() } },
           { scheduledEnd: { less_than: tenMinutesAgo.toISOString() } },
-          { libretimeFilepathRelative: { exists: true } },
-          { libretimeFilepathRelative: { not_equals: '' } },
+          // Note: publishedStatus is NOT required here - we process all aired episodes regardless of status
+          // Note: libretimeFilepathRelative is NOT required here - we update metrics for all aired episodes
+          // File path is only needed for cleanup operations
         ],
       },
       limit: 200,
@@ -140,10 +135,6 @@ export async function POST(req: NextRequest) {
           const libretimeFilepathRelative = episode.libretimeFilepathRelative
           const hasArchiveFile = episode.hasArchiveFile || false
 
-          if (!libretimeFilepathRelative) {
-            return
-          }
-
           const lockAcquired = await acquireEpisodeLock(episodeId)
           if (!lockAcquired) {
             console.log(`⏭️  Episode ${episodeId} is locked, skipping`)
@@ -151,7 +142,7 @@ export async function POST(req: NextRequest) {
           }
 
           try {
-            // Update airing metrics
+            // Update airing metrics first (doesn't require file path)
             const scheduledEnd = episode.scheduledEnd
             const firstAiredAt = episode.firstAiredAt
             const plays = episode.plays || 0
@@ -167,6 +158,16 @@ export async function POST(req: NextRequest) {
                 ...(firstAiredAt ? {} : { firstAiredAt: episode.scheduledAt }),
               },
             })
+
+            // Skip cleanup if no file path (e.g., live recordings not yet uploaded)
+            if (!libretimeFilepathRelative) {
+              console.log(
+                `⏭️  Episode ${episodeId} has no libretimeFilepathRelative, skipping cleanup`,
+              )
+              console.log(`   Metrics updated (firstAiredAt, airStatus='aired')`)
+              results.skipped++
+              return
+            }
 
             // Only cleanup working files for already-archived episodes
             // Archiving new episodes requires host-side rsync (via cron)

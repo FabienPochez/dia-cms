@@ -17,6 +17,26 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2026-01-14] - Post-Air Script Query Criteria Fix
+
+### Fixed
+- **Post-air script now processes all aired episodes** - Removed `publishedStatus` and `libretimeFilepathRelative` requirements from query criteria:
+  - Previously only processed episodes with `publishedStatus: 'published'` or `'submitted'`, excluding live episodes with `publishedStatus: 'draft'`
+  - Previously required `libretimeFilepathRelative` to exist, preventing metrics updates for episodes without files yet
+  - Now processes all aired episodes (based on `scheduledEnd`) regardless of `publishedStatus` or file path
+  - Metrics (`firstAiredAt`, `airStatus='aired'`, `plays`) are updated for all aired episodes
+  - Archiving/cleanup is still skipped if file path is missing or `publishedStatus` is not `'published'`
+  - Impact: Live episodes that have aired but don't have recordings yet will now have their metrics updated correctly
+  - Location: `scripts/cron/postair_archive_cleanup.ts`, `src/app/api/lifecycle/postair-archive/route.ts`
+
+- **Post-air script refactoring** - Improved logic flow to update metrics before checking file requirements:
+  - `processEpisode` now updates airing metrics first (doesn't require file path)
+  - Only skips archiving/cleanup if `libretimeFilepathRelative` is missing
+  - Better separation of concerns: metrics update vs. file operations
+  - Location: `scripts/cron/postair_archive_cleanup.ts`
+
+---
+
 ## [2026-01-14] - Live Recordings Hydration Script & Audio Validation Improvements
 
 ### Added
