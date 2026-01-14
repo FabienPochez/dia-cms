@@ -100,6 +100,77 @@ docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-inbox-lt.ts --poll-
 
 **See also:** [CHANGELOG.md](./CHANGELOG.md#2025-12-19---inbox-hydration-script-implementation) for detailed implementation notes.
 
+#### Live Recordings Hydration
+
+The live recordings hydration script processes studio-recorded live shows from `/srv/media/new-live` into LibreTime and hydrates corresponding Payload episodes.
+
+**What it does:**
+- Scans `/srv/media/new-live` for `*.mp3` files with `{episodeId}__...` filename pattern
+- Fetches eligible episodes from Payload (criteria: `pendingReview=false`, `airStatus='scheduled'` or `'aired'`, missing LibreTime fields)
+- Uploads files to LibreTime via HTTP API
+- Polls LibreTime until file analysis completes
+- Updates Payload episodes with `libretimeTrackId`, `libretimeFilepathRelative`, and duration metadata
+- **Preserves existing `airStatus`** (does not change 'scheduled' to 'queued' like inbox hydration)
+- Designed for episodes that have already aired or are scheduled to air
+
+**Usage:**
+```bash
+# Run live recordings hydration (default: scans /srv/media/new-live)
+docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-inbox-live.ts'
+
+# Custom directory
+docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-inbox-live.ts --inbox=/path/to/live'
+
+# Dry-run mode (no actual changes)
+docker compose run --rm jobs sh -lc 'npx tsx scripts/hydrate-inbox-live.ts --dry-run'
+```
+
+**Environment Variables:**
+- `PAYLOAD_INBOX_API_KEY`: Dedicated API key for hydration (preferred)
+- `PAYLOAD_API_KEY`: Fallback API key if `PAYLOAD_INBOX_API_KEY` is not set
+- `PAYLOAD_ADMIN_TOKEN`: JWT token (highest priority if set)
+- `MEDIA_NEW_LIVE_DIR`: Live recordings directory path (default: `/srv/media/new-live`)
+
+#### Post-Air Workflow Overview
+
+After episodes air, several automated and manual processes handle uploading to SoundCloud, archiving, and cleanup:
+
+**1. Inbox Hydration (Pre-recorded Episodes)**
+- For episodes uploaded by hosts via the upload form
+- Script: `scripts/hydrate-inbox-lt.ts`
+- Processes files from `/srv/media/new`
+- Sets `airStatus='queued'` after hydration
+- See [Inbox Hydration](#inbox-hydration-host-uploaded-episodes) section above
+
+**2. Live Recordings Hydration**
+- For studio-recorded live shows
+- Script: `scripts/hydrate-inbox-live.ts`
+- Processes files from `/srv/media/new-live`
+- Preserves existing `airStatus` (does not change it)
+- See [Live Recordings Hydration](#live-recordings-hydration) section above
+
+**3. SoundCloud Upload**
+- Manual script: `scripts/upload-episodes-soundcloud.ts`
+- Uploads eligible episodes to SoundCloud (requires `airStatus='aired'`, `firstAiredAt` set, `track_id` null, has `libretimeFilepathRelative`)
+- Sets `publishedStatus='published'` after successful upload and track availability verification
+- Uses OAuth token stored in `.cache/soundcloud-oauth.json`
+
+**4. Post-Air Archiving & Cleanup (Cron B - Automated)**
+- Automated cron job: Runs every 10 minutes
+- Script: `scripts/cron/postair_archive_cleanup.ts`
+- Updates airing metrics (`firstAiredAt`, `lastAiredAt`, `plays`, `airStatus='aired'`)
+- **Archives files to Hetzner Storage Box** (only if `publishedStatus='published'` - episodes must be uploaded to SoundCloud first)
+- Cleans up working files after successful archiving
+- See [Cron B: Post-air Archive & Cleanup](#cron-b-post-air-archive--cleanup) section below for details
+
+**Complete Workflow:**
+1. **Hydration**: Upload audio files to LibreTime (via inbox hydration for pre-recorded episodes, or live recordings hydration for studio recordings)
+2. **Post-Air Processing**: Cron B automatically processes aired episodes (sets `firstAiredAt`, `airStatus='aired'`, and metrics)
+3. **SoundCloud Upload**: Manually upload eligible episodes to SoundCloud (sets `publishedStatus='published'`)
+4. **Archiving**: Cron B automatically archives episodes that are uploaded to SoundCloud (`publishedStatus='published'`)
+
+---
+
 3. `pnpm install && pnpm dev` to install dependencies and start the dev server
 4. open `http://localhost:3000` to open the app in your browser
 
