@@ -17,6 +17,26 @@ This changelog documents all significant changes to the Payload CMS backend serv
 
 ---
 
+## [2026-01-14] - Live Recordings Hydration Script
+
+### Added
+- **Live recordings hydration script** – New script `scripts/hydrate-inbox-live.ts` for processing live studio recordings:
+  - Scans `/srv/media/new-live` for `*.mp3` files with `{episodeId}__...` filename pattern
+  - Fetches eligible episodes from Payload (pendingReview=false, airStatus='scheduled' or 'aired', missing LibreTime fields)
+  - Uploads files to LibreTime via HTTP API using internal network URL
+  - Sets LibreTime track name (`track_title`) to episode title after upload
+  - Polls LibreTime until file analysis completes and filepath is available
+  - Updates Payload episodes with `libretimeTrackId`, `libretimeFilepathRelative`, and duration metadata
+  - **Preserves existing `airStatus`** (does not change 'scheduled' to 'queued' like inbox hydration)
+  - Designed for episodes that have already aired or are scheduled to air
+  - Includes CLI flags: `--inbox`, `--poll-seconds`, `--timeout-seconds`, `--dry-run`
+  - Implements lockfile (`/tmp/lt-hydrate-inbox-live.lock`) to prevent concurrent runs
+  - Based on `hydrate-inbox-lt.ts` but adapted for live recordings workflow
+  - Location: `scripts/hydrate-inbox-live.ts`
+  - Impact: Enables hydration of live studio recordings, allowing post-air script to process them and set `firstAiredAt` and `airStatus: 'aired'`
+
+---
+
 ## [2026-01-09] - Post-Air Script Status Fix & SoundCloud Workflow Updates
 
 ### Fixed
